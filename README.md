@@ -13,6 +13,11 @@ $ pwdbg version
 pwdbg 0.3 (run + repl + duo IR bridge)
 ```
 
+📖 **Usage guide and debugging methodology:** see the
+**[project wiki](https://github.com/edgarburgues/pwdbg/wiki)** — scripts, LCD
+capture & diffing, the event stream, peer-play, diagnostics, and worked
+debugging case studies.
+
 ---
 
 ## Build
