@@ -9,7 +9,7 @@
 /* Shared helpers used by every subcommand. */
 
 /* Prepare a working directory with pwflash.rom + pweep.rom copied in.
- * rom_dir source ROM directory (e.g. /workspace/05-roms/pokewalker)
+ * rom_dir source ROM directory (e.g. ./roms)
  * workdir if non-NULL and non-empty: use as-is, create if missing,
  * keep after exit. If NULL or empty: mktemp, delete on
  * cleanup.

@@ -5,7 +5,7 @@
 
 /* Options for the batch `run` subcommand. */
 typedef struct RunOpts {
- const char *rom_dir; /* default /workspace/05-roms/pokewalker */
+ const char *rom_dir; /* default ./roms */
  const char *workdir; /* NULL = tempdir */
  const char *events_spec; /* NULL = off ("-" = stdout, path, stderr) */
  const char *lcd_pgm; /* NULL = skip PGM dump */

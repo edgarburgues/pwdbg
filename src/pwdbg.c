@@ -21,7 +21,7 @@ static void usage(FILE *f) {
  " pwdbg version version info\n"
  "\n"
  "'pwdbg run' options:\n"
- " --rom-dir DIR source ROMs (default: /workspace/05-roms/pokewalker)\n"
+ " --rom-dir DIR source ROMs (default: ./roms)\n"
  " --workdir DIR persistent working directory (default: tempdir)\n"
  " --cycles N stop after N H8 cycles (0 = unlimited; default: 10000000)\n"
  " --break PC break at PC (hex, repeatable; up to 16)\n"
@@ -263,7 +263,7 @@ static int cmd_repl(int argc, char **argv) {
  else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
  fputs(
  "pwdbg repl [options] interactive debugger.\n"
- " --rom-dir DIR source ROMs (default /workspace/05-roms/pokewalker)\n"
+ " --rom-dir DIR source ROMs (default ./roms)\n"
  " --workdir DIR persistent working dir (default tempdir)\n"
  " --events TARGET JSON event stream: '-' | stderr | <path>\n"
  " --script FILE non-interactive: read commands from FILE\n"

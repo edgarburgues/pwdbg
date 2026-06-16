@@ -28,7 +28,7 @@ make clean
 - **Build against a live pokeStride checkout** instead of the vendored copy:
 
  ```bash
- make POKESTRIDER=an external pokeStride checkout
+ make POKESTRIDER=/path/to/pokestride/source
  ```
 
 > `walker.c` is **unity-included** by `src/walker_ext.c` (`#include "walker.c"`), not
@@ -40,9 +40,9 @@ make clean
 
 ## Modes
 
-All modes take `--rom-dir DIR` (source ROMs, default `/workspace/05-roms/pokewalker` →
-in this workspace, `05-roms/pokewalker/`) and use a temp working directory unless you
-pass `--workdir`. Events are emitted as **JSON Lines** to `--events <target>` where
+All modes take `--rom-dir DIR` — the directory holding your PokéWalker ROM/EEPROM dumps
+(default `./roms`). They use a temp working directory unless you pass `--workdir`.
+Events are emitted as **JSON Lines** to `--events <target>` where
 `<target>` is `-` (stdout), `stderr`, or a file path.
 
 ### `pwdbg run` — batch runner
@@ -51,7 +51,7 @@ Runs until a cycle limit, breakpoint, stuck loop, decode error or SIGINT, then p
 summary. Exit code 0 on success, 1 on emulator error.
 
 ```bash
-pwdbg run --rom-dir ../../05-roms/pokewalker \
+pwdbg run --rom-dir ./roms \
  --cycles 30000000 \
  --events run.jsonl \
  --lcd-pgm final.pgm \
@@ -71,7 +71,7 @@ pwdbg run --rom-dir ../../05-roms/pokewalker \
 ### `pwdbg repl` — interactive debugger
 
 ```bash
-pwdbg repl --rom-dir ../../05-roms/pokewalker --workdir ./session
+pwdbg repl --rom-dir ./roms --workdir ./session
 ```
 
 Reads commands from stdin (`pwdbg>` prompt). Extra options: `--script FILE` (run commands
@@ -139,7 +139,7 @@ A's TX → peer B's RX and vice versa), modeling the IR link. Events carry `"i":
 `"i":2` (B). Waits for both to exit; non-zero exit if either peer failed.
 
 ```bash
-pwdbg duo --rom-dir ../../05-roms/pokewalker \
+pwdbg duo --rom-dir ./roms \
  --events-a peer_a.jsonl --events-b peer_b.jsonl
 ```
 
@@ -158,10 +158,10 @@ Two ways to link walkers over the emulated IR channel:
 
 ```bash
 # terminal 1 — server
-pwdbg repl --rom-dir ../../05-roms/pokewalker --instance 1 --ir-listen /tmp/pw_ir
+pwdbg repl --rom-dir ./roms --instance 1 --ir-listen /tmp/pw_ir
 
 # terminal 2 — client
-pwdbg repl --rom-dir ../../05-roms/pokewalker --instance 2 --ir-connect /tmp/pw_ir
+pwdbg repl --rom-dir ./roms --instance 2 --ir-connect /tmp/pw_ir
 ```
 
 For testing communication against an empty EEPROM (no prior pairing), enable the test
@@ -176,7 +176,7 @@ patches: `peer-patch on` (makes the ROM's identity check pass) and, on one side,
 are ignored. Sample scripts live in `tests/scripts/`:
 
 ```bash
-pwdbg repl --rom-dir ../../05-roms/pokewalker \
+pwdbg repl --rom-dir ./roms \
  --script tests/scripts/diag_single.script --events ev.jsonl
 ```
 

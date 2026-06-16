@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 typedef struct ReplOpts {
- const char *rom_dir; /* default /workspace/05-roms/pokewalker */
+ const char *rom_dir; /* default ./roms */
  const char *workdir; /* NULL = tempdir */
  const char *events_spec; /* NULL = off ("-" stdout / "stderr" / path) */
  const char *script; /* NULL = interactive; else run commands from file */

@@ -24,7 +24,7 @@
 #include "walker.h"
 #include "walker_ext.h"
 
-#define DEFAULT_ROM_DIR "/workspace/05-roms/pokewalker"
+#define DEFAULT_ROM_DIR "./roms"
 #define RTC_QUARTER_CYCLES 921600ULL
 #define MAX_BREAKS 64
 #define MAX_WATCHES 32

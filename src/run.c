@@ -14,7 +14,7 @@
 #include "walker_ext.h"
 
 /* Default ROM location. Overridable via --rom-dir. */
-#define DEFAULT_ROM_DIR "/workspace/05-roms/pokewalker"
+#define DEFAULT_ROM_DIR "./roms"
 
 /* RTC quarter-second: 921600 CPU cycles at 3.6864 MHz. */
 #define RTC_QUARTER_CYCLES 921600ULL
