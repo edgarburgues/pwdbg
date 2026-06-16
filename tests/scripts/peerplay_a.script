@@ -1,0 +1,29 @@
+ir-sniff on
+stuck off
+rtc auto on
+run 30000000
+key ENTER
+run 25000000
+key ENTER
+run 5000000
+peer-patch on
+memw 0xF7C0 aa bb cc dd
+break add 0x632C
+break add 0x1856
+watch trace 0xF7AD
+watch trace 0xF8BE
+watch trace 0xF8C4
+watch trace 0xF8C5
+watch trace 0xF7E0
+run 30000000
+run 30000000
+run 30000000
+run 30000000
+run 30000000
+info
+mem 0xF7AD 1
+mem 0xF8BE 1
+mem 0xF8C4 1
+mem 0xF8C5 1
+mem 0xF7E0 2
+quit

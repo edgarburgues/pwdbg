@@ -1,0 +1,20 @@
+stuck off
+rtc auto on
+run 30000000
+info
+mem 0xF7B6 1
+mem 0xF7E0 2
+mem 0xF8BE 1
+key ENTER
+run 3000000
+info
+mem 0xF7B6 1
+mem 0xF7E0 2
+mem 0xF8BE 1
+mem 0xF7AD 1
+run 20000000
+info
+mem 0xF7E0 2
+mem 0xF8BE 1
+mem 0xF7AD 1
+quit

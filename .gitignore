@@ -1,0 +1,4 @@
+build/
+pwdbg
+*.o
+*.rom
