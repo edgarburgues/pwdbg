@@ -9,7 +9,7 @@
 /* Shared helpers used by every subcommand. */
 
 /* Prepare a working directory with pwflash.rom + pweep.rom copied in.
- *   rom_dir    source ROM directory (e.g. /workspace/05-roms/pokewalker)
+ *   rom_dir    source ROM directory (e.g. ./roms)
  *   workdir    if non-NULL and non-empty: use as-is, create if missing,
  *              keep after exit.  If NULL or empty: mktemp, delete on
  *              cleanup.
@@ -43,18 +43,18 @@ FILE *common_open_events(const char *spec, bool *needs_fclose_out);
 int common_lookup_symbol(const char *nm_path, const char *symbol,
                          uint32_t *out_addr);
 
-/* Resolve the rebuilt-ROM button-inject hook (ui_keypoll_main) into the
- * walker's walkerV2KeypollPC global, so the hook survives firmware rebuilds
- * that move the function. Only acts when entry_pc == 0x0080 (the v2 ROM);
- * the original ROM uses a different, PC-stable hook. The symbols file is
- * $PWDBG_V2_SYMS if set, else "<launch_dir>/build/syms.nm". */
-void common_resolve_v2_keypoll_hook(uint16_t entry_pc, const char *launch_dir);
+/* Resolve the button-inject hook (ui_keypoll_main) into the walker's
+ * walkerAltKeypollPC global, so the hook survives builds that move the
+ * function. Only acts when entry_pc == 0x0080 (an alternate image); the
+ * original ROM uses a different, PC-stable hook. The symbols file is
+ * $PWDBG_ALT_SYMS if set, else "<launch_dir>/build/syms.nm". */
+void common_resolve_alt_keypoll_hook(uint16_t entry_pc, const char *launch_dir);
 
-/* IR stubs back-channel — optional hook used by REPL (entregable 2). */
+/* IR stubs back-channel — optional hook used by the REPL. */
 void ir_stubs_set_events(EventStream *s);
 void ir_stubs_inject_rx(const unsigned char *buf, size_t n);
 
-/* IR peer harness primitives (see IR_PEER_HARNESS.md):
+/* IR peer harness primitives (see the wiki, "Peer-play and the IR bridge"):
  *  - tap: dump every SCI3 TX byte as "<cycle> <hexbyte>" lines.
  *  - scheduled injection: deliver bytes to RX at an absolute cycle.
  *  - feed: replay a tap file with stamps re-based to "now".

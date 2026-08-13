@@ -25,7 +25,7 @@
 #include "walker.h"
 #include "walker_ext.h"
 
-#define DEFAULT_ROM_DIR    "/workspace/05-roms/pokewalker"
+#define DEFAULT_ROM_DIR    "./roms"
 #define RTC_QUARTER_CYCLES 921600ULL
 #define MAX_BREAKS         64
 #define MAX_WATCHES        32
@@ -603,7 +603,7 @@ static void cmd_ir_inject(int argc, char **argv) {
     printf("injected %d bytes into local RX queue\n", argc);
 }
 
-/* `ir` — the peer-harness primitives (IR_PEER_HARNESS.md):
+/* `ir` — the peer-harness primitives (see the wiki):
  *   ir tap FILE | ir tap off      cycle-stamped dump of every TX byte
  *   ir inject [@+N] HEX..         queue RX bytes (now, or now+N cycles)
  *   ir feed FILE                  replay a tap file (stamps re-based)
@@ -919,7 +919,7 @@ int repl_main(const ReplOpts *opts) {
 
     cov_init();
 
-    /* Capture the launch directory before chdir — the v2 symbol table
+    /* Capture the launch directory before chdir — the alternate image's symbol table
      * (build/syms.nm) is resolved relative to it. */
     char origcwd[PATH_MAX];
     if (!getcwd(origcwd, sizeof origcwd)) origcwd[0] = '\0';
@@ -952,7 +952,7 @@ int repl_main(const ReplOpts *opts) {
 
     initWalker();
     st.currentPC = getPC();
-    common_resolve_v2_keypoll_hook(getEntry(), origcwd);
+    common_resolve_alt_keypoll_hook(getEntry(), origcwd);
     ir_stubs_set_cycle_ptr(&st.totalCycles);
     pace_enabled = opts->realtime;
 

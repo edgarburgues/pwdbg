@@ -158,10 +158,10 @@ struct Lcd_t{
 	bool startLineSet;        /* true once the ROM issues a 0x40 set-start-line */
 	bool startLineActive;     /* true once start-line selects the UPPER half
 	                           * (>= panel height), i.e. the ROM actually page-
-	                           * flips (Nintendo ROM alternates 0/64; v2 after
-	                           * Part 1). A ROM that only ever sets the lower half
-	                           * (v2 today: an init 32, then 0, while drawing into
-	                           * the upper half) is NOT "active" — we fall back to
+	                           * flips (the Nintendo ROM alternates 0/64). A ROM
+	                           * that only ever sets the lower half (say an init
+	                           * 32, then 0, while drawing into the upper half)
+	                           * is NOT "active" — we fall back to
 	                           * pick-inkier so its render is unchanged. */
 };
 

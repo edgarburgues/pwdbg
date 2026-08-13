@@ -13,10 +13,10 @@
 #define LCD_WIDTH 96
 #define LCD_HEIGHT 64
 
-/* PC of ui_keypoll_main for the v2 ROM (entry==0x0080). Set by the harness from
+/* PC of ui_keypoll_main for an alternate image (entry==0x0080). Set by the harness from
  * the ELF symbol table so the button-inject hook survives firmware rebuilds.
  * 0 = disabled. */
-extern uint32_t walkerV2KeypollPC;
+extern uint32_t walkerAltKeypollPC;
 
 void initWalker(); // Must be called once before the main loop
 int runNextInstruction(uint64_t* cycleCount); // Must be called once every main loop iteration and given a cycleCount variable defined globally
@@ -34,7 +34,7 @@ uint16_t getTimerWGRA(void);      // Read Timer W GRA register (audio frequency)
 uint8_t  getWalkerVolume(void);   // Read volume setting from PW RAM (0xF7C6)
 bool     isTimerWActive(void);    // Check if Timer W is running
 uint16_t getPC(void);             // Read H8 PC at last instruction (for error logging)
-uint16_t getEntry(void);          // ROM entry point (reset vector); 0x0080 = a rebuilt ROM
+uint16_t getEntry(void);          // ROM entry point (reset vector); 0x0080 = an alternate image
 bool isSleeping(void);            // true while the CPU is halted in SLEEP (waiting for an IRQ)
 uint8_t  readMem(uint16_t addr);  // Read a byte from H8 memory
 uint8_t  getAudioReg(int idx);   // Read AEC registers: 0=ECPWCR(0xFF8C), 1=ECPWDR(0xFF8E), 2=SPCR(0xFF91)

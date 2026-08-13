@@ -15,7 +15,7 @@
 #include "walker_ext.h"
 
 /* Default ROM location.  Overridable via --rom-dir. */
-#define DEFAULT_ROM_DIR "/workspace/05-roms/pokewalker"
+#define DEFAULT_ROM_DIR "./roms"
 
 /* RTC quarter-second: 921600 CPU cycles at 3.6864 MHz. */
 #define RTC_QUARTER_CYCLES 921600ULL
@@ -34,7 +34,7 @@ int run_main(const RunOpts *opts) {
     bool persist = false;
     const char *rom_dir = opts->rom_dir ? opts->rom_dir : DEFAULT_ROM_DIR;
 
-    /* Capture the launch directory before chdir — the v2 symbol table
+    /* Capture the launch directory before chdir — the alternate image's symbol table
      * (build/syms.nm) is resolved relative to it. */
     char origcwd[PATH_MAX];
     if (!getcwd(origcwd, sizeof origcwd)) origcwd[0] = '\0';
@@ -66,7 +66,7 @@ int run_main(const RunOpts *opts) {
 
     initWalker();
     currentPC = getPC();
-    common_resolve_v2_keypoll_hook(getEntry(), origcwd);
+    common_resolve_alt_keypoll_hook(getEntry(), origcwd);
     ir_stubs_set_cycle_ptr(&totalCycles);
 
     ev_emit(ev, "start",

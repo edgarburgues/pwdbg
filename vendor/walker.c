@@ -96,12 +96,12 @@ static struct SCI3_t SCI3;
 static bool sleep;
 static int entry;  /* ROM entry point — read from reset vector */
 
-/* PC of ui_keypoll_main for a rebuilt ROM (entry==0x0080). The pwdbg
+/* PC of ui_keypoll_main for an alternate image (entry==0x0080). The pwdbg
  * harness resolves this from the ELF symbol table (build/syms.nm) at startup so
- * the button-inject hook survives firmware rebuilds that move the function. 0 =
+ * the button-inject hook survives builds that move the function. 0 =
  * unresolved/disabled (e.g. the original ROM, which uses the entry==0x02C4
  * hook). See runNextInstruction(). */
-uint32_t walkerV2KeypollPC = 0;
+uint32_t walkerAltKeypollPC = 0;
 
 /* H8/300H Tiny flag-clear protocol ("read-1-then-write-0", Renesas manual):
  * writing 0 to a status flag only clears it if the LAST READ of the register
@@ -120,8 +120,8 @@ static uint8_t lastReadSSR3 = 0;
  * caller, so a frame's draw sequence can be enumerated without a step-over
  * debugger. Enable via env PWDBG_DRAW_TRACE (=1 uses the default PC, or =0xNNNN
  * to set the PC) or the `draw-trace` repl command. drawTracePC defaults to
- * 0x80ac = lcd_draw_image in the ORIGINAL Nintendo ROM (it moves in the v2
- * recompile, so pass the v2 address explicitly when tracing test/v2). This is
+ * 0x80ac = lcd_draw_image in the ORIGINAL Nintendo ROM (it moves in any other
+ * image, so pass that image's address explicitly when tracing it). This is
  * pure observability: it does not change any executed semantics. */
 bool     drawTraceEnabled = false;
 uint16_t drawTracePC       = 0x80ac;
@@ -242,7 +242,7 @@ void fillVideoBuffer(uint32_t* videoBuffer){
 	 * 0–63 (pages 0–7); start-line 64 shows rows 64–127 (pages 8–15).
 	 *
 	 * If the ROM has issued a 0x40 (orig flips every frame), honour it. If it
-	 * never has (as happens with some rebuilt ROMs), fall back to the legacy
+	 * never has (as happens with some images), fall back to the legacy
 	 * free-running half toggle so the pick-inkier dump in lcd.c still works
 	 * and behaviour is unchanged. */
 	int startRow;
@@ -643,24 +643,24 @@ int runNextInstruction(uint64_t* cycleCount){
 					setMemory8(0xffde, popElement(&inputQueue));
 			}
 		}
-		// rebuilt-ROM hooks (entry=0x0080)
+		// alternate-image hooks (entry=0x0080)
 		if (entry == 0x0080) {
 			// Input hook: ui_keypoll_main. The legacy hooks above are gated to
 			// the original/old-compiled ROMs, so without this the inject queue
-			// is never drained for v2 — LEFT/RIGHT never reach the button port
+			// is never drained here — LEFT/RIGHT never reach the button port
 			// and the menu can't navigate. (ENTER still works because it is
 			// delivered through IRQ0, not the port.)
 			//
 			// The button input register is PORT B at 0xFFDE (this is where the
-			// Nintendo ROM reads buttons, and v2 itself drives bit5 there). We
+			// Nintendo ROM reads buttons, and the image drives bit5 there). We
 			// pop one queued sample per keypoll call (press, then release) and
 			// write only the button bits (0,2,4 = ENTER/LEFT/RIGHT), preserving
 			// the firmware's own output bits on the same port.
 			//
-			// ui_keypoll_main's PC moves when v2 is rebuilt, so it is NOT
+			// ui_keypoll_main's PC moves between builds, so it is NOT
 			// hardcoded here: the harness resolves it from the ELF symbol table
-			// (build/syms.nm) into walkerV2KeypollPC at startup. 0 = unresolved.
-			if (walkerV2KeypollPC && pc == walkerV2KeypollPC) {
+			// (build/syms.nm) into walkerAltKeypollPC at startup. 0 = unresolved.
+			if (walkerAltKeypollPC && pc == walkerAltKeypollPC) {
 				if (!isEmpty(&inputQueue)) {
 					uint8_t key = popElement(&inputQueue);
 					setMemory8(0xffde, (memory[0xffde] & 0xEA) | (key & 0x15));
@@ -2928,7 +2928,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										case 0x5:{ // RDSR - read status register
 											eeprom.buffer.state = EEPROM_GETTING_STATUS_REGISTER;
 										} break;
-										case 0x6:{ // WREN - write enable. v2 drives EEP writes
+										case 0x6:{ // WREN - write enable. Some images drive EEP writes
 										            // full-duplex (SSER=0xC0), so WREN/WRITE land
 										            // on this read path; honour them here too.
 											eeprom.status |= 0x2; // WEL
@@ -3157,8 +3157,8 @@ int runNextInstruction(uint64_t* cycleCount){
 								 * page-flips for double-buffering ever does this
 								 * (the Nintendo ROM alternates 0/64 every frame).
 								 * A ROM that only sets line 0 (or an init value
-								 * <64) while drawing into the upper half — v2
-								 * today, double-buffer not yet wired — never
+								 * <64) while drawing into the upper half, with
+								 * no double-buffering wired up — never
 								 * does, so it keeps the pick-inkier fallback. */
 								if (lcd.displayStartLine >= LCD_HEIGHT)
 									lcd.startLineActive = true;

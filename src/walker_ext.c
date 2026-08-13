@@ -359,23 +359,22 @@ void walker_preexec_hook(void) {
             memory[0xF8BE] = 0x01;
             ev_log_hook("force_slave", pc);
         }
-        /* v2 ROM (entry 0x0080): its FA handler is a static inlined into the
+        /* Alternate image (entry 0x0080): it inlines its FA handler into the
          * dispatcher, so there is no symbol to anchor a PC hook on. Instead
-         * the hook is RAM-driven — v2's RX buffer (0xF8CE, XOR-decoded,
-         * faithful to the ROM RX assembler at 0x90e-0x922; shared half-duplex
-         * with the TX header) and peer-role byte (0xF8BE) are stable
-         * ROM-mirror addresses that survive every rebuild. When a decoded FA
-         * (peer's master announce) sits in the buffer while we are contesting
-         * the role (F8BE==2 = we announced too — the deterministic-twins
-         * deadlock), flip to 1 so the FA handler takes its slave branch.
-         * Fires before the dispatch reads the role (this hook runs before
-         * every instruction). Only needed to force the orig-master pairing
-         * deterministically — with v2's SSR3-race fix the natural role war
-         * resolves on its own, usually with v2 as master. */
+         * the hook is RAM-driven. The RX buffer (0xF8CE, XOR-decoded, shared
+         * half-duplex with the TX header) and the peer-role byte (0xF8BE) are
+         * the same addresses the original ROM uses, so they hold across
+         * builds. When a decoded FA — the peer's master announce — sits in
+         * the buffer while we are contesting the role (F8BE==2 means we
+         * announced too: the deterministic-twins deadlock), flip to 1 so the
+         * FA handler takes its slave branch. Fires before the dispatch reads
+         * the role, this hook running ahead of every instruction. Only needed
+         * to force the pairing deterministically; left alone, the role
+         * contest resolves on its own. */
         if (entry == 0x0080 &&
             memory[0xF8CE] == 0xFA && memory[0xF8BE] == 0x02) {
             memory[0xF8BE] = 0x01;
-            ev_log_hook("force_slave_v2", pc);
+            ev_log_hook("force_slave_alt", pc);
         }
     }
 }

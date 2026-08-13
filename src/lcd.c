@@ -28,12 +28,12 @@ static long fb_ink(const uint32_t *fb) {
 
 static void fill_painted(uint32_t *fb) {
     /* If the ROM actively page-flips the SSD1854 display-start-line (the
-     * Nintendo ROM, and rebuilt ROMs that flip), fillVideoBuffer()
+     * Nintendo ROM, and any other image that flips), fillVideoBuffer()
      * returns exactly the half the panel is scanning out — the front buffer.
      * Just take it. Note: "active" means it has set a NON-zero start-line; a
-     * ROM that only ever sets line 0 while drawing into the upper half (v2
-     * today, double-buffer not yet wired) is not flipping, so we must NOT
-     * honour its stuck start-line or we'd show its blank half. */
+     * ROM that only ever sets line 0 while drawing into the upper half (an
+     * image with no double-buffering wired up) is not flipping, so we must
+     * NOT honour its stuck start-line or we'd show its blank half. */
     if (lcdStartLineActive()) {
         fillVideoBuffer(fb);
         return;

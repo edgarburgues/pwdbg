@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "walker.h"   /* walkerV2KeypollPC */
+#include "walker.h"   /* walkerAltKeypollPC */
 
 static int copy_file(const char *src, const char *dst) {
     FILE *in = fopen(src, "rb");
@@ -112,12 +112,12 @@ int common_lookup_symbol(const char *nm_path, const char *symbol,
     return rc;
 }
 
-void common_resolve_v2_keypoll_hook(uint16_t entry_pc, const char *launch_dir) {
-    /* Only the v2 ROM (entry 0x0080) drains keys through this hook; the
-     * original ROM (entry 0x02C4) has its own PC-stable hook in walker.c. */
+void common_resolve_alt_keypoll_hook(uint16_t entry_pc, const char *launch_dir) {
+    /* Only an alternate image (entry 0x0080) drains keys through this hook;
+     * the original ROM (entry 0x02C4) has its own PC-stable hook in walker.c. */
     if (entry_pc != 0x0080) return;
 
-    const char *symspec = getenv("PWDBG_V2_SYMS");
+    const char *symspec = getenv("PWDBG_ALT_SYMS");
     char nmpath[PATH_MAX];
     if (symspec && *symspec)
         snprintf(nmpath, sizeof nmpath, "%s", symspec);
@@ -127,8 +127,8 @@ void common_resolve_v2_keypoll_hook(uint16_t entry_pc, const char *launch_dir) {
 
     uint32_t addr;
     if (common_lookup_symbol(nmpath, "ui_keypoll_main", &addr) == 0) {
-        walkerV2KeypollPC = addr;
-        fprintf(stderr, "pwdbg: v2 keypoll hook @0x%04X (ui_keypoll_main)\n",
+        walkerAltKeypollPC = addr;
+        fprintf(stderr, "pwdbg: keypoll hook @0x%04X (ui_keypoll_main)\n",
                 (unsigned)addr);
     } else {
         fprintf(stderr, "pwdbg: warning: could not resolve ui_keypoll_main "

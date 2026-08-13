@@ -21,7 +21,7 @@ static void usage(FILE *f) {
         "  pwdbg version            version info\n"
         "\n"
         "'pwdbg run' options:\n"
-        "  --rom-dir DIR       source ROMs (default: /workspace/05-roms/pokewalker)\n"
+        "  --rom-dir DIR       source ROMs (default: ./roms)\n"
         "  --workdir DIR       persistent working directory (default: tempdir)\n"
         "  --cycles N          stop after N H8 cycles (0 = unlimited; default: 10000000)\n"
         "  --break PC          break at PC (hex, repeatable; up to 16)\n"
@@ -220,7 +220,7 @@ static int cmd_pair(int argc, char **argv) {
             fputs(
                 "pwdbg pair [options]   two scripted REPL walkers linked by virtual IR.\n"
                 "\n"
-                "  --rom-a/-b DIR       per-instance ROM dir (orig<->orig, v2<->orig, ...)\n"
+                "  --rom-a/-b DIR       per-instance ROM dir (they may differ)\n"
                 "  --script-a/-b FILE   per-instance repl script (REQUIRED; keys, runs, dumps)\n"
                 "  --workdir-a/-b DIR   persistent workdirs (default: tempdirs)\n"
                 "  --events-a/-b FILE   JSON event file per instance\n"
@@ -264,7 +264,7 @@ static int cmd_repl(int argc, char **argv) {
         else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
             fputs(
                 "pwdbg repl [options]   interactive debugger.\n"
-                "  --rom-dir DIR     source ROMs (default /workspace/05-roms/pokewalker)\n"
+                "  --rom-dir DIR     source ROMs (default ./roms)\n"
                 "  --workdir DIR     persistent working dir (default tempdir)\n"
                 "  --events TARGET   JSON event stream: '-' | stderr | <path>\n"
                 "  --script FILE     non-interactive: read commands from FILE\n"
@@ -298,7 +298,7 @@ int main(int argc, char **argv) {
         !strcmp(sub, "-h")   ||
         !strcmp(sub, "--help")) { usage(stdout); return 0; }
     if (!strcmp(sub, "version")) {
-        puts("pwdbg 0.3 (entregable 3: run + repl + duo IR bridge)");
+        puts("pwdbg 0.3 (run + repl + duo + pair, IR bridge)");
         return 0;
     }
     fprintf(stderr, "pwdbg: unknown subcommand '%s' (try 'pwdbg help')\n", sub);
