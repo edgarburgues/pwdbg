@@ -10,14 +10,18 @@
 #include <stdint.h>
 #include <stddef.h>
 
-void ir_tx_start(void);
-void ir_tx_byte(uint8_t b);
-void ir_tx_end(void);
-void ir_tx_flush_to_rx(void);
-void ir_recv_start(void);
-void ir_recv_pump(void); /* drain peer socket into the scheduled chunk
- * queue NOW (eager parse) — keeps frame dues
- * meaningful even while rxBuf is mid-drain */
-size_t ir_recv_poll(uint8_t *buf, size_t maxlen);
-void ir_recv_stop(void);
+void    ir_tx_start(void);
+void    ir_tx_byte(uint8_t b);
+void    ir_tx_end(void);
+void    ir_tx_flush_to_rx(void);
+void    ir_recv_start(void);
+void    ir_recv_pump(void);   /* drain peer socket into the scheduled chunk
+                               * queue NOW (eager parse) — keeps frame dues
+                               * meaningful even while rxBuf is mid-drain */
+size_t  ir_recv_poll(uint8_t *buf, size_t maxlen);
+void    ir_recv_stop(void);
 uint64_t ir_get_blocked_ticks(void);
+
+#include <stdbool.h>
+bool ir_rx_air_silent(void);
+void ir_drain_tx_echo(void);

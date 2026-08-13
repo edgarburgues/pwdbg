@@ -173,6 +173,29 @@ For testing communication against an empty EEPROM (no prior pairing), enable the
 patches: `peer-patch on` (makes the ROM's identity check pass) and, on one side,
 `force-slave on` (forces SLAVE on any SYN).
 
+### Against an external peer
+
+`--ir-listen` speaks raw wire bytes, so the peer does not have to be another pwdbg. Anything
+that can open a Unix socket and talk the protocol will do — for instance
+[pwlink](https://git.diogenes-homelab.com/akadmin/pwlink), a PC implementation that also
+drives real infrared hardware.
+
+```bash
+pwdbg repl --rom-dir ./roms --realtime --ir-listen /tmp/pw_ir
+```
+
+**`--realtime` is required here.** Without it the REPL runs the CPU as fast as it can, which
+is roughly seventy times real speed, and the firmware's ~98 ms response window collapses to
+about 1.3 ms — far too short for an external program to answer in. With pacing on, the
+emulated CPU runs at 3.6864 MHz and an outside peer has the same time budget a real walker
+would give it.
+
+This is worth doing even if you have no interest in external peers, because it separates two
+questions that are easy to confuse. Run the firmware against a clean socket peer and a
+complete encounter — identity, eleven EEPROM writes, eleven reads, play-data, completion —
+goes through on the first attempt. If the same firmware then fails against real hardware, the
+firmware is not the problem and the transport is.
+
 ---
 
 ## Scripts

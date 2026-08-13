@@ -32,16 +32,16 @@ static uint8_t* IRQ_IENR2; // Interrupt enable register 2
 static uint8_t* IRQ_IRR1; // Interrupt flag register 1
 static uint8_t* IRQ_IRR2; // Interrupt flag register 2
 static uint8_t* RTCFLG; // RTC Interrupt Flag Register
-/* Interrupt context save. Real H8 hardware pushes PC+CCR onto the stack on
+/* Interrupt context save.  Real H8 hardware pushes PC+CCR onto the stack on
  * exception entry and pops them on RTE, so nested/re-entrant interrupts each
- * preserve their own return point. This emulator restores PC+CCR from saved
+ * preserve their own return point.  This emulator restores PC+CCR from saved
  * state at RTE rather than from the guest stack; a single save slot therefore
  * loses the outer frame if an ISR is itself interrupted (e.g. an ISR that
- * re-enables I, or a TimerW edge taken while an RTC ISR is mid-flight). When
+ * re-enables I, or a TimerW edge taken while an RTC ISR is mid-flight).  When
  * the outer frame is clobbered, the outer ISR's RTE returns to the wrong place
- * and any RAM writes it had queued never complete. A small LIFO of save slots
+ * and any RAM writes it had queued never complete.  A small LIFO of save slots
  * mirrors the hardware stack discipline so each ISR's context — and the RAM
- * writes made inside it — survive delivery and return. For the common
+ * writes made inside it — survive delivery and return.  For the common
  * non-nested case (depth 0→1→0) this is byte-identical to the old single slot. */
 #define INTERRUPT_SAVE_DEPTH 8
 static uint16_t interruptSavedAddressStack[INTERRUPT_SAVE_DEPTH];
@@ -51,34 +51,34 @@ static int interruptSaveDepth;
 static uint16_t interruptSavedAddress;
 static struct Flags_t interruptSavedFlags;
 
-/* Push the current (pc, flags) as an interrupt return context. Call this at
+/* Push the current (pc, flags) as an interrupt return context.  Call this at
  * the moment of delivery, BEFORE setting flags.I, so the saved CCR reflects
  * the interrupted context. */
 static inline void interruptPushContext(void){
 	if (interruptSaveDepth < INTERRUPT_SAVE_DEPTH){
 		interruptSavedAddressStack[interruptSaveDepth] = pc;
-		interruptSavedFlagsStack[interruptSaveDepth] = flags;
+		interruptSavedFlagsStack[interruptSaveDepth]   = flags;
 		interruptSaveDepth++;
 	}
 	/* mirror for compatibility / inspection */
 	interruptSavedAddress = pc;
-	interruptSavedFlags = flags;
+	interruptSavedFlags   = flags;
 }
 
 /* Restore the most recently saved interrupt context (used by RTE). */
 static inline void interruptPopContext(void){
 	if (interruptSaveDepth > 0){
 		interruptSaveDepth--;
-		pc = interruptSavedAddressStack[interruptSaveDepth] - 2;
+		pc    = interruptSavedAddressStack[interruptSaveDepth] - 2;
 		flags = interruptSavedFlagsStack[interruptSaveDepth];
 	} else {
 		/* underflow: fall back to the legacy single-slot behaviour */
-		pc = interruptSavedAddress - 2;
+		pc    = interruptSavedAddress - 2;
 		flags = interruptSavedFlags;
 	}
 	if (interruptSaveDepth > 0){
 		interruptSavedAddress = interruptSavedAddressStack[interruptSaveDepth - 1];
-		interruptSavedFlags = interruptSavedFlagsStack[interruptSaveDepth - 1];
+		interruptSavedFlags   = interruptSavedFlagsStack[interruptSaveDepth - 1];
 	}
 }
 static uint32_t* ER[8]; // General purpose registers
@@ -94,9 +94,9 @@ static struct Eeprom_t eeprom;
 static struct Lcd_t lcd;
 static struct SCI3_t SCI3;
 static bool sleep;
-static int entry; /* ROM entry point — read from reset vector */
+static int entry;  /* ROM entry point — read from reset vector */
 
-/* PC of ui_keypoll_main for the custom ROM (entry==0x0080). The pwdbg
+/* PC of ui_keypoll_main for a rebuilt ROM (entry==0x0080). The pwdbg
  * harness resolves this from the ELF symbol table (build/syms.nm) at startup so
  * the button-inject hook survives firmware rebuilds that move the function. 0 =
  * unresolved/disabled (e.g. the original ROM, which uses the entry==0x02C4
@@ -120,11 +120,11 @@ static uint8_t lastReadSSR3 = 0;
  * caller, so a frame's draw sequence can be enumerated without a step-over
  * debugger. Enable via env PWDBG_DRAW_TRACE (=1 uses the default PC, or =0xNNNN
  * to set the PC) or the `draw-trace` repl command. drawTracePC defaults to
- * 0x80ac = lcd_draw_image in the ORIGINAL Nintendo ROM (it moves in the custom ROM
- * recompile, so pass the custom ROM address explicitly when tracing test/the custom ROM). This is
+ * 0x80ac = lcd_draw_image in the ORIGINAL Nintendo ROM (it moves in the v2
+ * recompile, so pass the v2 address explicitly when tracing test/v2). This is
  * pure observability: it does not change any executed semantics. */
-bool drawTraceEnabled = false;
-uint16_t drawTracePC = 0x80ac;
+bool     drawTraceEnabled = false;
+uint16_t drawTracePC       = 0x80ac;
 /* PC of the instruction that last wrote the LCD SSTDR (0xF0EB). Captured so the
  * raw-SSU footer trace can name the routine writing pixels directly (bypassing
  * lcd_draw_image). Only maintained while drawTraceEnabled. */
@@ -135,26 +135,26 @@ void walkerSetDrawTrace(int on, unsigned pcOpt){
 }
 
 // Audio event latch: set when Timer W activates, consumed by audioUpdate
-static bool audioEventPending = false; /* legacy — replaced by polling GRA */
-static uint16_t audioEventGRA = 0; /* legacy — replaced by polling GRA */
+static bool audioEventPending = false;      /* legacy — replaced by polling GRA */
+static uint16_t audioEventGRA = 0;          /* legacy — replaced by polling GRA */
 
 // Last PC before instruction execution (for error logging)
 static uint16_t lastExecPC = 0;
 
 // Debug anchor — scannable from outside (azahar-lnk UDP) via magic bytes
 struct DebugAnchor {
-	uint32_t magic1; // 0x504B5354 "PKST"
-	uint32_t magic2; // 0x524C4421 "RLD!"
-	uint8_t* memory; // → H8 64KB memory (SCI3 regs at 0xFF98-0xFF9D)
-	uint16_t* pc; // → H8 program counter
-	struct SCI3_t* sci3; // → SCI3 state (txBuf, rxBuf, lengths)
-	struct Flags_t* flags; // → CPU flags
-	uint32_t** ER; // → ER0-ER7 register pointers
+	uint32_t magic1;        // 0x504B5354 "PKST"
+	uint32_t magic2;        // 0x524C4421 "RLD!"
+	uint8_t* memory;        // → H8 64KB memory (SCI3 regs at 0xFF98-0xFF9D)
+	uint16_t* pc;           // → H8 program counter
+	struct SCI3_t* sci3;    // → SCI3 state (txBuf, rxBuf, lengths)
+	struct Flags_t* flags;  // → CPU flags
+	uint32_t** ER;          // → ER0-ER7 register pointers
 };
 static volatile struct DebugAnchor debugAnchor;
 
 uint8_t clearBit8(uint8_t operand, int bit){
-	return operand & ~(1 << bit);
+	return operand & ~(1 << bit);			
 }
 
 static inline struct RegRef8 getRegRef8(uint8_t operand){
@@ -183,7 +183,7 @@ static inline struct RegRef32 getRegRef32(uint8_t operand){
 void printRegistersState(){
 #ifdef PRINT_STATE
 	for(int i=0; i < 8; i++){
-		printf("ER%d: [0x%08X], ", i, *ER[i]);
+		printf("ER%d: [0x%08X], ", i, *ER[i]); 
 	}
 	printf("\n");
 	printf("I: %d, H: %d, N: %d, Z: %d, V: %d, C: %d ", flags.I, flags.H, flags.N, flags.Z, flags.V, flags.C);
@@ -195,7 +195,7 @@ void printRegistersState(){
 void printMemory(uint32_t address, int byteCount){
 #ifdef PRINT_STATE
 	address = address & 0x0000ffff; // Keep lower 16 bits only
-	for(int i = 0; i < byteCount; i++){
+	for(int i = 0; i < byteCount; i++){ 
 		printf("MEMORY - 0x%04x -> %02x\n", address + i, memory[address + i]);
 	}
 #endif
@@ -225,14 +225,14 @@ void setFlags(uint8_t value){
  * used by STC ccr,Rd and the ANDC/ORC/XORC immediate-CCR ops. */
 uint8_t packFlags(void){
 	return (uint8_t)(
-		(flags.C ? (1<<0) : 0) |
-		(flags.V ? (1<<1) : 0) |
-		(flags.Z ? (1<<2) : 0) |
-		(flags.N ? (1<<3) : 0) |
-		(flags.U ? (1<<4) : 0) |
-		(flags.H ? (1<<5) : 0) |
+		(flags.C  ? (1<<0) : 0) |
+		(flags.V  ? (1<<1) : 0) |
+		(flags.Z  ? (1<<2) : 0) |
+		(flags.N  ? (1<<3) : 0) |
+		(flags.U  ? (1<<4) : 0) |
+		(flags.H  ? (1<<5) : 0) |
 		(flags.UI ? (1<<6) : 0) |
-		(flags.I ? (1<<7) : 0));
+		(flags.I  ? (1<<7) : 0));
 }
 
 void fillVideoBuffer(uint32_t* videoBuffer){
@@ -242,25 +242,25 @@ void fillVideoBuffer(uint32_t* videoBuffer){
 	 * 0–63 (pages 0–7); start-line 64 shows rows 64–127 (pages 8–15).
 	 *
 	 * If the ROM has issued a 0x40 (orig flips every frame), honour it. If it
-	 * never has (the current the custom ROM), fall back to the legacy
+	 * never has (as happens with some rebuilt ROMs), fall back to the legacy
 	 * free-running half toggle so the pick-inkier dump in lcd.c still works
 	 * and behaviour is unchanged. */
 	int startRow;
 	if (lcd.startLineActive) {
-		startRow = lcd.displayStartLine & 0x7F; /* mod 128 */
+		startRow = lcd.displayStartLine & 0x7F;     /* mod 128 */
 	} else {
-		startRow = lcd.currentBuffer ? 64 : 0; /* legacy: half 0 or 1 */
+		startRow = lcd.currentBuffer ? 64 : 0;      /* legacy: half 0 or 1 */
 		lcd.currentBuffer ^= 1;
 	}
 	for(int y = 0; y < LCD_HEIGHT; y++){
-		const int physRow = (startRow + y) & 0x7F; /* wrap mod 128 */
-		const int yBit = physRow & 7; /* row within page */
-		const int yPage = physRow >> 3; /* GDDRAM page 0..15 */
+		const int physRow = (startRow + y) & 0x7F;  /* wrap mod 128 */
+		const int yBit  = physRow & 7;              /* row within page */
+		const int yPage = physRow >> 3;             /* GDDRAM page 0..15 */
 		const int rowOff = yPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE;
 		const uint8_t mask = (uint8_t)(1 << yBit);
 		for(int x = 0; x < LCD_WIDTH; x++){
 			int base = rowOff + 2*x;
-			uint8_t firstBit = (lcd.memory[base ] & mask) >> yBit;
+			uint8_t firstBit  = (lcd.memory[base    ] & mask) >> yBit;
 			uint8_t secondBit = (lcd.memory[base + 1] & mask) >> yBit;
 			videoBuffer[y*LCD_WIDTH + x] = palette[(firstBit << 1) | secondBit];
 		}
@@ -329,7 +329,7 @@ void setMemory8(uint32_t address, uint8_t value){
 		SCI3.txHasPending = true;
 		*SCI3.SSR3 &= ~(SCI3_TDRE | SCI3_TEND);
 		SCI3.txCountdown = 320;
-		SCI3.txIdleCountdown = 0; /* cancel idle detector — more data coming */
+		SCI3.txIdleCountdown = 0;  /* cancel idle detector — more data coming */
 		return;
 	}
 #endif
@@ -339,16 +339,16 @@ void setMemory8(uint32_t address, uint8_t value){
 
 void setMemory16(uint32_t address, uint16_t value){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
-	memory[address] = value >> 8;
-	memory[address + 1] = value & 0xFF;
+	memory[address] = value >> 8; 
+	memory[address + 1] = value & 0xFF; 
 }
 
 void setMemory32(uint32_t address, uint32_t value){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
-	memory[address] = value >> 24;
-	memory[address + 1] = (value >> 16) & 0xFF;
-	memory[address + 2] = (value >> 8) & 0xFF;
-	memory[address + 3] = value & 0xFF;
+	memory[address] = value >> 24; 
+	memory[address + 1] = (value >> 16) & 0xFF; 
+	memory[address + 2] = (value >> 8) & 0xFF; 
+	memory[address + 3] = value & 0xFF; 
 }
 
 uint16_t getMemory8(uint32_t address){
@@ -406,8 +406,8 @@ void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 			halfCarryFlag = 0x8;
 
 			// TODO: maybe we can just cast to a signed int here and not have to use the flags
-			flags.Z = (uint8_t)(value1 + value2) == 0x0;
-			flags.N = (uint8_t)(value1 + value2) & negativeFlag;
+			flags.Z = (uint8_t)(value1 + value2) == 0x0;  
+			flags.N = (uint8_t)(value1 + value2) & negativeFlag;  
 
 		}break;
 		case 16:{
@@ -416,8 +416,8 @@ void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 			negativeFlag = 0x8000;
 			halfCarryFlag = 0x100;
 
-			flags.Z = (uint16_t)(value1 + value2) == 0x0;
-			flags.N = (uint16_t)(value1 + value2) & negativeFlag;
+			flags.Z = (uint16_t)(value1 + value2) == 0x0;  
+			flags.N = (uint16_t)(value1 + value2) & negativeFlag;  
 
 		}break;
 		case 32:{
@@ -426,8 +426,8 @@ void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 			negativeFlag = 0x80000000;
 			halfCarryFlag = 0x10000;
 
-			flags.Z = (uint32_t)(value1 + value2) == 0x0;
-			flags.N = (uint32_t)(value1 + value2) & negativeFlag;
+			flags.Z = (uint32_t)(value1 + value2) == 0x0;  
+			flags.N = (uint32_t)(value1 + value2) & negativeFlag;  
 
 
 		}break;
@@ -435,7 +435,7 @@ void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 
 	flags.V = ~(value1 ^ value2) & ((value1 + value2) ^ value1) & negativeFlag; // If both operands have the same sign and the results is from a different sign, overflow has occured.
 	flags.C = (value1 & negativeFlag) && !(value2 & negativeFlag) && !((value1 + value2) & negativeFlag);
-	flags.H = (((value1 & maxValueLo) + (value2 & maxValueLo) & halfCarryFlag) == halfCarryFlag) ? 1 : 0;
+	flags.H = (((value1 & maxValueLo) + (value2 & maxValueLo) & halfCarryFlag) == halfCarryFlag) ? 1 : 0; 
 }
 
 void setFlagsSUB(uint32_t value1, uint32_t value2, int numberOfBits){
@@ -450,7 +450,7 @@ void setFlagsSUB(uint32_t value1, uint32_t value2, int numberOfBits){
 			halfCarryFlag = 0x8;
 
 			// TODO: maybe we can just cast to a signed int here and not have to use the flags
-			flags.N = (uint8_t)(value1 - value2) & negativeFlag;
+			flags.N = (uint8_t)(value1 - value2) & negativeFlag;  
 
 		}break;
 		case 16:{
@@ -458,7 +458,7 @@ void setFlagsSUB(uint32_t value1, uint32_t value2, int numberOfBits){
 			negativeFlag = 0x8000;
 			halfCarryFlag = 0x100;
 
-			flags.N = (uint16_t)(value1 - value2) & negativeFlag;
+			flags.N = (uint16_t)(value1 - value2) & negativeFlag;  
 
 		}break;
 		case 32:{
@@ -466,21 +466,21 @@ void setFlagsSUB(uint32_t value1, uint32_t value2, int numberOfBits){
 			negativeFlag = 0x80000000;
 			halfCarryFlag = 0x10000;
 
-			flags.N = (uint32_t)(value1 - value2) & negativeFlag;
+			flags.N = (uint32_t)(value1 - value2) & negativeFlag;  
 
 
 		}break;
 	}
 
-	flags.Z = (value1 - value2) == 0x0;
+	flags.Z = (value1 - value2) == 0x0;  
 	flags.V = ((value1 ^ value2) & negativeFlag) && (~((value1 - value2) ^ value2) & negativeFlag); // If both operands have a different sign and the results is from the same sing as the 2nd op, overflow has occured.
 	flags.C = value2 > value1;
-	flags.H = (value2 & maxValueLo) > (value1 & maxValueLo);
+	flags.H = (value2 & maxValueLo) > (value1 & maxValueLo); 
 }
 
 void setFlagsINC(uint32_t value1, uint32_t value2, int numberOfBits){
 	uint32_t negativeFlag = (1 << (numberOfBits-1));
-	flags.N = (value1 + value2) & negativeFlag;
+	flags.N = (value1 + value2) & negativeFlag;  
 	flags.Z = ((value1 + value2) == 0) ? true : false;
 	flags.V = ~(value1 ^ value2) & ((value1 + value2) ^ value1) & negativeFlag; // If both operands have the same sign and the results is from a different sign, overflow has occured.
 }
@@ -524,21 +524,21 @@ void runSubClock(){
 		if(*TimerW.TMRW & CTS){
 			/* Tick TCNT at the rate determined by TCRW CKS bits [6:4].
 			 * runSubClock fires at 32768 Hz (sub-clock). CKS selects:
-			 * CKS=4: phi_w undivided (32768 Hz) → divider 1
-			 * CKS=5: phi_w/2 (16384 Hz) → divider 2
-			 * CKS=6: phi_w/4 (8192 Hz) → divider 4
-			 * CKS=7: phi_w/8 (4096 Hz) → divider 8
-			 * CKS=0-3: system clock rates — approximate as every tick
+			 *   CKS=4: phi_w undivided (32768 Hz) → divider 1
+			 *   CKS=5: phi_w/2 (16384 Hz) → divider 2
+			 *   CKS=6: phi_w/4 (8192 Hz)  → divider 4
+			 *   CKS=7: phi_w/8 (4096 Hz)  → divider 8
+			 *   CKS=0-3: system clock rates — approximate as every tick
 			 */
 			static uint8_t twDivCounter = 0;
 			uint8_t cks = (*TimerW.TCRW >> 4) & 0x07;
 			uint8_t divider;
 			switch (cks) {
-				case 4: divider = 1; break; /* phi_w */
-				case 5: divider = 2; break; /* phi_w/2 */
-				case 6: divider = 4; break; /* phi_w/4 */
-				case 7: divider = 8; break; /* phi_w/8 */
-				default: divider = 1; break; /* CKS=0-3: system clock, approx */
+				case 4:  divider = 1; break;  /* phi_w */
+				case 5:  divider = 2; break;  /* phi_w/2 */
+				case 6:  divider = 4; break;  /* phi_w/4 */
+				case 7:  divider = 8; break;  /* phi_w/8 */
+				default: divider = 1; break;  /* CKS=0-3: system clock, approx */
 			}
 			if (++twDivCounter >= divider) {
 				twDivCounter = 0;
@@ -573,35 +573,35 @@ void runSubClock(){
  * may override via the 'cycles' variable inside the switch.
  */
 static const uint8_t h8_cycles[256] = {
-	/* 0x00-0x0F NOP, MOV/ADD/INC/ADDS reg, CCR ops */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0x10-0x1F shifts, SUB/DEC/SUBS/CMP/SUBX reg */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0x20-0x2F MOV.B @aa:8, Rd */ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	/* 0x30-0x3F MOV.B Rs, @aa:8 */ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	/* 0x40-0x4F Bcc d:8 */ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	/* 0x50 MULXU.B 12 */
-	/* 0x51 DIVXU.B 12 */
-	/* 0x54 RTS 8 */
-	/* 0x55 BSR d:8 6 */
-	/* 0x56 RTE 10 */
-	/* 0x58 Bcc d:16 6 */
-	/* 0x59 JMP @ERn 4 */
-	/* 0x5A JMP @aa:16 6 */
-	/* 0x5B JMP @@aa:8 8 */
-	/* 0x5C BSR d:16 8 */
-	/* 0x5D JSR @ERn 6 */
-	/* 0x5E JSR @aa:16 6 */
-	/* 0x5F JSR @@aa:8 8 */
-	 12,12, 2, 2, 8, 6,10, 2, 6, 4, 6, 8, 8, 6, 6, 8,
-	/* 0x60-0x67 bit ops reg (2) 0x68-0x6F MOV @ERn/aa:16 */ 2, 2, 2, 2, 2, 2, 2, 2, 4, 4, 6, 6, 6, 6, 6, 6,
-	/* 0x70-0x77 bit ops reg (2) 0x78-0x7F extended/imm */ 2, 2, 2, 2, 2, 2, 2, 2,10, 4, 6, 2, 8, 8, 6, 6,
-	/* 0x80-0x8F ADD.B #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0x90-0x9F ADDX #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0xA0-0xAF CMP.B #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0xB0-0xBF SUBX #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0xC0-0xCF OR.B #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0xD0-0xDF XOR.B #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0xE0-0xEF AND.B #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	/* 0xF0-0xFF MOV.B #imm:8 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0x00-0x0F  NOP, MOV/ADD/INC/ADDS reg, CCR ops          */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0x10-0x1F  shifts, SUB/DEC/SUBS/CMP/SUBX reg           */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0x20-0x2F  MOV.B @aa:8, Rd                              */ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	/* 0x30-0x3F  MOV.B Rs, @aa:8                              */ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	/* 0x40-0x4F  Bcc d:8                                      */ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	/* 0x50       MULXU.B          12                          */
+	/* 0x51       DIVXU.B          12                          */
+	/* 0x54       RTS               8                          */
+	/* 0x55       BSR d:8           6                          */
+	/* 0x56       RTE              10                          */
+	/* 0x58       Bcc d:16          6                          */
+	/* 0x59       JMP @ERn          4                          */
+	/* 0x5A       JMP @aa:16        6                          */
+	/* 0x5B       JMP @@aa:8        8                          */
+	/* 0x5C       BSR d:16          8                          */
+	/* 0x5D       JSR @ERn          6                          */
+	/* 0x5E       JSR @aa:16        6                          */
+	/* 0x5F       JSR @@aa:8        8                          */
+	                                                            12,12, 2, 2, 8, 6,10, 2, 6, 4, 6, 8, 8, 6, 6, 8,
+	/* 0x60-0x67  bit ops reg (2)  0x68-0x6F  MOV @ERn/aa:16  */ 2, 2, 2, 2, 2, 2, 2, 2, 4, 4, 6, 6, 6, 6, 6, 6,
+	/* 0x70-0x77  bit ops reg (2)  0x78-0x7F  extended/imm    */ 2, 2, 2, 2, 2, 2, 2, 2,10, 4, 6, 2, 8, 8, 6, 6,
+	/* 0x80-0x8F  ADD.B #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0x90-0x9F  ADDX  #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0xA0-0xAF  CMP.B #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0xB0-0xBF  SUBX  #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0xC0-0xCF  OR.B  #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0xD0-0xDF  XOR.B #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0xE0-0xEF  AND.B #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	/* 0xF0-0xFF  MOV.B #imm:8                                 */ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
 };
 
 int runNextInstruction(uint64_t* cycleCount){
@@ -609,10 +609,10 @@ int runNextInstruction(uint64_t* cycleCount){
 	if (!sleep){
 		// ROM-specific hooks — original pwflash.rom (entry=0x02C4)
 		if (entry == 0x02C4) {
-			if (pc == 0x336){ pc += 4; return 0; } // Skip factory test
+			if (pc == 0x336){ pc += 4; return 0; }        // Skip factory test
 			if (pc == 0x350){ pc += 4; *RL[0] = 0; return 0; } // Skip battery check
-			if (pc == 0x7700){ pc += 2; return 0; } // Skip accel SLEEP
-			if (pc == 0x9b84) { // Input hook
+			if (pc == 0x7700){ pc += 2; return 0; }       // Skip accel SLEEP
+			if (pc == 0x9b84) {                            // Input hook
 				if (!isEmpty(&inputQueue))
 					setMemory8(0xffde, popElement(&inputQueue));
 			}
@@ -643,21 +643,21 @@ int runNextInstruction(uint64_t* cycleCount){
 					setMemory8(0xffde, popElement(&inputQueue));
 			}
 		}
-		// the custom ROM hooks (entry=0x0080)
+		// rebuilt-ROM hooks (entry=0x0080)
 		if (entry == 0x0080) {
 			// Input hook: ui_keypoll_main. The legacy hooks above are gated to
 			// the original/old-compiled ROMs, so without this the inject queue
-			// is never drained for the custom ROM — LEFT/RIGHT never reach the button port
+			// is never drained for v2 — LEFT/RIGHT never reach the button port
 			// and the menu can't navigate. (ENTER still works because it is
 			// delivered through IRQ0, not the port.)
 			//
 			// The button input register is PORT B at 0xFFDE (this is where the
-			// Nintendo ROM reads buttons, and the custom ROM itself drives bit5 there). We
+			// Nintendo ROM reads buttons, and v2 itself drives bit5 there). We
 			// pop one queued sample per keypoll call (press, then release) and
 			// write only the button bits (0,2,4 = ENTER/LEFT/RIGHT), preserving
 			// the firmware's own output bits on the same port.
 			//
-			// ui_keypoll_main's PC moves when the custom ROM is rebuilt, so it is NOT
+			// ui_keypoll_main's PC moves when v2 is rebuilt, so it is NOT
 			// hardcoded here: the harness resolves it from the ELF symbol table
 			// (build/syms.nm) into walkerV2KeypollPC at startup. 0 = unresolved.
 			if (walkerV2KeypollPC && pc == walkerV2KeypollPC) {
@@ -677,7 +677,7 @@ int runNextInstruction(uint64_t* cycleCount){
 			uint16_t sp = (uint16_t)(*SP & 0xFFFF);
 			uint16_t caller = (uint16_t)((memory[sp] << 8) | memory[(uint16_t)(sp + 1)]);
 			fprintf(stderr,
-				"[DRAW] x=%-3u y=%-3u w=%-3u h=%-3u r0=%04X r1=%04X src=er2:%06X(r2=%04X) caller=0x%04X\n",
+				"[DRAW] x=%-3u y=%-3u w=%-3u h=%-3u  r0=%04X r1=%04X  src=er2:%06X(r2=%04X)  caller=0x%04X\n",
 				r0 & 0xFF, (r0 >> 8) & 0xFF, r1 & 0xFF, (r1 >> 8) & 0xFF,
 				r0, r1, er2 & 0xFFFFFF, r2, caller);
 		}
@@ -696,7 +696,7 @@ int runNextInstruction(uint64_t* cycleCount){
 
 		uint16_t cd = (*(currentInstruction + 1) << 8) | (*(currentInstruction + 1) >> 8);
 		uint8_t c = cd >> 8;
-		uint8_t cH = (c >> 4) & 0xF;
+		uint8_t cH = (c >> 4) & 0xF; 
 		uint8_t cL = c & 0xF;
 
 		uint8_t d = cd & 0xFF;
@@ -705,14 +705,14 @@ int runNextInstruction(uint64_t* cycleCount){
 
 		uint16_t ef = (*(currentInstruction + 2) << 8) | (*(currentInstruction + 2) >> 8);
 		uint8_t e = ef >> 8;
-		uint8_t eH = (e >> 4) & 0xF;
+		uint8_t eH = (e >> 4) & 0xF; 
 		uint8_t eL = e & 0xF;
 
 		uint8_t f = ef & 0xFF;
 		uint8_t fH = (f >> 4) & 0xF;
 		uint8_t fL = f & 0xF;
 
-		uint32_t cdef = cd << 16 | ef;
+		uint32_t cdef = cd << 16 | ef;                     
 
 		// (removed STARTING_WATTS hack — watts now earned from steps)
 		switch(a){
@@ -750,7 +750,7 @@ int runNextInstruction(uint64_t* cycleCount){
 									case 0x6B:{
 										switch(dH){
 											case 0x0:{ // MOV.l @aa:16, Rd
-												uint32_t address = (ef & 0x0000FFFF) | 0x00FF0000;
+												uint32_t address = (ef & 0x0000FFFF) | 0x00FF0000; 
 												uint32_t value = getMemory32(address);
 
 												struct RegRef32 Rd = getRegRef32(dL);
@@ -758,13 +758,13 @@ int runNextInstruction(uint64_t* cycleCount){
 												setFlagsMOV(value, 32);
 												*Rd.ptr = value;
 
-												printInstruction("%04x - MOV.l @%x:16, ER%d\n", pc, address, Rd.idx);
+												printInstruction("%04x - MOV.l @%x:16, ER%d\n", pc, address, Rd.idx); 
 												printRegistersState();
 
 											}break;
 
-											case 0x8:{ // MOV.l Rs, @aa:16
-												uint32_t address = (cdef & 0x0000FFFF) | 0x00FF0000;
+											case 0x8:{ // MOV.l Rs, @aa:16 
+												uint32_t address = (cdef & 0x0000FFFF) | 0x00FF0000; 
 
 												struct RegRef32 Rs = getRegRef32(dL);
 
@@ -772,7 +772,7 @@ int runNextInstruction(uint64_t* cycleCount){
 												setFlagsMOV(value, 32);
 												setMemory32(address, value);
 
-												printInstruction("%04x - MOV.l ER%d,@%x:16 \n", pc, Rs.idx, address);
+												printInstruction("%04x - MOV.l ER%d,@%x:16 \n", pc, Rs.idx, address); 
 												printMemory(address, 4);
 												printRegistersState();
 
@@ -799,7 +799,7 @@ int runNextInstruction(uint64_t* cycleCount){
 											setFlagsMOV(value, 32);
 											*Rd.ptr = value;
 
-											printInstruction("%04x - MOV.l @ER%d+, ER%d\n", pc, Rs.idx, Rd.idx);
+											printInstruction("%04x - MOV.l @ER%d+, ER%d\n", pc, Rs.idx, Rd.idx); 
 
 										} else{
 											struct RegRef32 Rs = getRegRef32(dL);
@@ -811,7 +811,7 @@ int runNextInstruction(uint64_t* cycleCount){
 											setMemory32(*Rd.ptr, value);
 											setFlagsMOV(value, 32);
 
-											printInstruction("%04x - MOV.l ER%d, @-ER%d, \n", pc, Rs.idx, Rd.idx);
+											printInstruction("%04x - MOV.l ER%d, @-ER%d, \n", pc, Rs.idx, Rd.idx); 
 											printMemory(*Rd.ptr, 4);
 
 										}
@@ -820,7 +820,7 @@ int runNextInstruction(uint64_t* cycleCount){
 
 
 									} break;
-									case 0x6F:{
+									case 0x6F:{ 
 										uint16_t disp = ef;
 										bool msbDisp = disp & 0x8000;
 										uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 | disp) : disp;
@@ -829,13 +829,13 @@ int runNextInstruction(uint64_t* cycleCount){
 											struct RegRef32 Rs = getRegRef32(dH);
 											struct RegRef32 Rd = getRegRef32(dL);
 
-											uint32_t value = getMemory32(*Rs.ptr + signExtendedDisp);
+											uint32_t value = getMemory32(*Rs.ptr + signExtendedDisp); 
 											*Rd.ptr = value;
 											setFlagsMOV(value, 32);
 
-											printInstruction("%04x - MOV.l @(%d:16, ER%d), ER%d\n", pc, disp, Rs.idx, Rd.idx);
+											printInstruction("%04x - MOV.l @(%d:16, ER%d), ER%d\n", pc, disp, Rs.idx, Rd.idx); 
 
-										} else{ // To memory ERs, @(d:16,ERd)
+										} else{ // To memory  ERs, @(d:16,ERd) 
 											struct RegRef32 Rs = getRegRef32(dL);
 											struct RegRef32 Rd = getRegRef32(dH);
 
@@ -844,13 +844,13 @@ int runNextInstruction(uint64_t* cycleCount){
 
 
 											setMemory32(*Rd.ptr + signExtendedDisp, value);
-											printInstruction("%04x - MOV.l ER%d,@(%d:16, ER%d)\n", pc, Rs.idx, disp, Rd.idx);
+											printInstruction("%04x - MOV.l ER%d,@(%d:16, ER%d)\n", pc, Rs.idx, disp, Rd.idx); 
 											printMemory(*Rd.ptr + signExtendedDisp, 4);
 										}
 										printRegistersState();
 										pc+=4;
 									} break;
-									case 0x69:{
+									case 0x69:{ 
 										if (!(dH & 0x8)){ // MOV.L @ERs, ERd
 											struct RegRef32 Rs = getRegRef32(dH);
 											struct RegRef32 Rd = getRegRef32(dL);
@@ -860,9 +860,9 @@ int runNextInstruction(uint64_t* cycleCount){
 											setFlagsMOV(value, 32);
 											*Rd.ptr = value;
 
-											printInstruction("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx );
+											printInstruction("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 											printRegistersState();
-										} else{ // MOV.l ERs, @ERd
+										} else{ // MOV.l ERs, @ERd 
 											struct RegRef32 Rs = getRegRef32(dL);
 											struct RegRef32 Rd = getRegRef32(dH);
 											uint32_t value = *Rs.ptr;
@@ -883,7 +883,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										setFlagsMOV(newValue, 32);
 										*Rd.ptr = newValue;
 
-										printInstruction("%04x - AND.l R%d, ER%d\n", pc, Rs.idx, Rd.idx );
+										printInstruction("%04x - AND.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -898,7 +898,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										setFlagsMOV(newValue, 32);
 										*Rd.ptr = newValue;
 
-									printInstruction("%04x - OR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx );
+									printInstruction("%04x - OR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -913,7 +913,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										setFlagsMOV(newValue, 32);
 										*Rd.ptr = newValue;
 
-										printInstruction("%04x - XOR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx );
+										printInstruction("%04x - XOR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -959,7 +959,7 @@ int runNextInstruction(uint64_t* cycleCount){
 											struct RegRef8 Rs = getRegRef8(dH);
 											struct RegRef16 Rd = getRegRef16(dL);
 											int8_t lowerBitsRd = *Rd.ptr & 0x00FF;
-											*Rd.ptr = (int16_t)*Rs.ptr * (int16_t)lowerBitsRd;
+											*Rd.ptr = (int16_t)*Rs.ptr * (int16_t)lowerBitsRd; 
 											flags.Z = (*Rd.ptr == 0) ? 1 : 0;
 											flags.N = (*Rd.ptr & 0x8000) ? 1 : 0;
 
@@ -1008,7 +1008,7 @@ int runNextInstruction(uint64_t* cycleCount){
 											struct RegRef16 Rs = getRegRef16(dH);
 											struct RegRef32 Rd = getRegRef32(dL);
 											int16_t quotient = (int32_t)*Rd.ptr / (int16_t)*Rs.ptr;
-											int16_t remainder = (int32_t)*Rd.ptr % (int16_t)*Rs.ptr;
+											int16_t remainder = (int32_t)*Rd.ptr % (int16_t)*Rs.ptr; 
 											*Rd.ptr = (remainder << 16) | quotient;
 
 											flags.Z = (*Rs.ptr == 0) ? 1 : 0;
@@ -1026,15 +1026,15 @@ int runNextInstruction(uint64_t* cycleCount){
 								};
 							}break;
 							case 0xF:{ // 01 F0 prefix — 32-bit OR.L / XOR.L / AND.L
-								/* 4-byte instructions. The outer switch adds
+								/* 4-byte instructions.  The outer switch adds
 								 * pc+=2 after this case returns; one inner
 								 * pc+=2 below (end of the if-block) makes
-								 * total +4. (The earlier `pc+=2` at entry
+								 * total +4.  (The earlier `pc+=2` at entry
 								 * was a bug — caused an extra 2-byte advance
 								 * that corrupted the following instruction's
 								 * decoding; fixed when tracking down why
 								 * sessionId assignment in handle_ACK/SYN was
- * only writing 16 bits of the 32-bit result.) */
+                                 * only writing 16 bits of the 32-bit result.) */
 								if (bL == 0x0 && cH == 0x6){
 									struct RegRef32 Rs = getRegRef32(dH);
 									struct RegRef32 Rd = getRegRef32(dL);
@@ -1077,7 +1077,7 @@ int runNextInstruction(uint64_t* cycleCount){
 
 						}
 					}break;
-					case 0x2:{ // STC.B CCR, Rd (02 0N)
+					case 0x2:{ // STC.B CCR, Rd   (02 0N)
 						struct RegRef8 Rd = getRegRef8(bL);
 						*Rd.ptr = packFlags();
 						printInstruction("%04x - STC.B CCR, r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
@@ -1090,17 +1090,17 @@ int runNextInstruction(uint64_t* cycleCount){
 						printInstruction("%04x - LDC.B r%d%c, CCR\n", pc, Rs.idx, Rs.loOrHiReg);
 						printRegistersState();
 					}break;
-					case 0x4:{ // ORC #xx:8, CCR (04 ii)
+					case 0x4:{ // ORC #xx:8, CCR   (04 ii)
 						setFlags(packFlags() | b);
 						printInstruction("%04x - ORC #%x:8, CCR\n", pc, b);
 						printRegistersState();
 					}break;
-					case 0x5:{ // XORC #xx:8, CCR (05 ii)
+					case 0x5:{ // XORC #xx:8, CCR  (05 ii)
 						setFlags(packFlags() ^ b);
 						printInstruction("%04x - XORC #%x:8, CCR\n", pc, b);
 						printRegistersState();
 					}break;
-					case 0x6:{ // ANDC #xx:8, CCR (06 ii)
+					case 0x6:{ // ANDC #xx:8, CCR  (06 ii)
 						setFlags(packFlags() & b);
 						printInstruction("%04x - ANDC #%x:8, CCR\n", pc, b);
 						printRegistersState();
@@ -1118,7 +1118,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsADD(*Rd.ptr, *Rs.ptr, 8);
 						*Rd.ptr += *Rs.ptr;
 
-						printInstruction("%04x - ADD.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - ADD.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x9:{ // ADD.W Rs, Rd
@@ -1128,7 +1128,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsADD(*Rd.ptr, *Rs.ptr, 16);
 
 						*Rd.ptr += *Rs.ptr;
-						printInstruction("%04x - ADD.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - ADD.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 
 					}break;
@@ -1155,7 +1155,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setFlagsADD(*Rd.ptr, *Rs.ptr, 32);
 
 								*Rd.ptr += *Rs.ptr;
-								printInstruction("%04x - ADD.l ER%d, ER%d\n", pc, Rs.idx, Rd.idx);
+								printInstruction("%04x - ADD.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 							default:{
@@ -1182,7 +1182,7 @@ int runNextInstruction(uint64_t* cycleCount){
 							}break;
 							case 0x5:{ // INC.w #1, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
-								setFlagsINC(*Rd.ptr, 1, 16);
+								setFlagsINC(*Rd.ptr, 1, 16); 
 								*Rd.ptr += 1;
 								printInstruction("%04x - INC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
@@ -1217,7 +1217,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(*Rs.ptr, 8);
 						*Rd.ptr = *Rs.ptr;
 
-						printInstruction("%04x - MOV.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - MOV.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 
 					}break;
@@ -1228,7 +1228,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(*Rs.ptr, 16);
 
 						*Rd.ptr = *Rs.ptr;
-						printInstruction("%04x - MOV.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - MOV.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 
 					}break;
@@ -1256,7 +1256,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setFlagsMOV(*Rs.ptr, 32);
 
 								*Rd.ptr = *Rs.ptr;
-								printInstruction("%04x - MOV.l ER%d, ER%d\n", pc, Rs.idx, Rd.idx);
+								printInstruction("%04x - MOV.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 							default:{
@@ -1492,7 +1492,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(newValue, 8);
 						*Rd.ptr = newValue;
 
-						printInstruction("%04x - OR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - OR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x5:{ // XOR.B Rs, Rd
@@ -1504,7 +1504,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(newValue, 8);
 						*Rd.ptr = newValue;
 
-						printInstruction("%04x - XOR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - XOR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x6:{ // AND.B Rs, Rd
@@ -1516,7 +1516,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(newValue, 8);
 						*Rd.ptr = newValue;
 
-						printInstruction("%04x - AND.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - AND.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x7:{
@@ -1525,7 +1525,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								struct RegRef8 Rd = getRegRef8(bL);
 								*Rd.ptr = ~*Rd.ptr;
 								setFlagsMOV(*Rd.ptr, 8);
-								printInstruction("%04x - NOT.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - NOT.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg); 
 								printRegistersState();
 							} break;
 							case 0x1:{
@@ -1533,7 +1533,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								struct RegRef16 Rd = getRegRef16(bL);
 								*Rd.ptr = ~*Rd.ptr;
 								setFlagsMOV(*Rd.ptr, 16);
-								printInstruction("%04x - NOT.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - NOT.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx); 
 								printRegistersState();
 							} break;
 							case 0x3:{ // NOT.l Rd
@@ -1561,7 +1561,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								if (*Rd.ptr != 0x80){
 									*Rd.ptr = (int8_t)0 - (int8_t)*Rd.ptr;
 								}
-								printInstruction("%04x - NEG.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - NEG.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg); 
 								printRegistersState();
 
 							} break;
@@ -1572,7 +1572,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								if (*Rd.ptr != 0x8000){
 									*Rd.ptr = (int16_t)0 - (int16_t)*Rd.ptr;
 								}
-								printInstruction("%04x - NEG.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - NEG.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx); 
 								printRegistersState();
 
 							} break;
@@ -1617,7 +1617,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 8);
 						*Rd.ptr -= *Rs.ptr;
 
-						printInstruction("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 
 					}break;
@@ -1629,7 +1629,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 16);
 
 						*Rd.ptr -= *Rs.ptr;
-						printInstruction("%04x - SUB.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - SUB.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 
 					}break;
@@ -1656,7 +1656,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setFlagsSUB(*Rd.ptr, *Rs.ptr, 32);
 
 								*Rd.ptr -= *Rs.ptr;
-								printInstruction("%04x - SUB.l ER%d, ER%d\n", pc, Rs.idx, Rd.idx);
+								printInstruction("%04x - SUB.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 							default:{
@@ -1671,21 +1671,21 @@ int runNextInstruction(uint64_t* cycleCount){
 								struct RegRef32 Rd = getRegRef32(bL);
 
 								*Rd.ptr -= 1;
-								printInstruction("%04x - SUBS #1, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - SUBS #1, ER%d\n", pc, Rd.idx); 
 								printRegistersState();
 							}break;
 							case 0x8:{ // SUBS #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 
 								*Rd.ptr -= 2;
-								printInstruction("%04x - SUBS #2, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - SUBS #2, ER%d\n", pc, Rd.idx); 
 								printRegistersState();
 							}break;
 							case 0x9:{ // SUBS #4, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 
 								*Rd.ptr -= 4;
-								printInstruction("%04x - SUBS #4, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - SUBS #4, ER%d\n", pc, Rd.idx); 
 								printRegistersState();
 							}break;
 							case 0x5:{ // DEC.w #1, Rd
@@ -1727,7 +1727,7 @@ int runNextInstruction(uint64_t* cycleCount){
 
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 8);
 
-						printInstruction("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 
 					}break;
@@ -1736,7 +1736,7 @@ int runNextInstruction(uint64_t* cycleCount){
 					struct RegRef16 Rd = getRegRef16(bL);
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 16);
 
-						printInstruction("%04x - CMP.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - CMP.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0xE:{ // SUBX Rs, Rd
@@ -1747,7 +1747,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						*Rd.ptr -= *Rs.ptr;
 						*Rd.ptr -= flags.C;
 
-						printInstruction("%04x - SUBX R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - SUBX R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0xF:{
@@ -1769,7 +1769,7 @@ int runNextInstruction(uint64_t* cycleCount){
 
 								setFlagsSUB(*Rd.ptr, *Rs.ptr, 32);
 
-								printInstruction("%04x - CMP.l ER%d, ER%d\n", pc, Rs.idx, Rd.idx);
+								printInstruction("%04x - CMP.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 							default:{
@@ -2052,8 +2052,8 @@ int runNextInstruction(uint64_t* cycleCount){
 				switch(aL){
 					case 0x0:{ // BSET Rn, Rd
 
-						struct RegRef8 Rd = getRegRef8(bL);
-						struct RegRef8 Rn = getRegRef8(bH);
+						struct RegRef8 Rd = getRegRef8(bL);		
+						struct RegRef8 Rn = getRegRef8(bH);		
 						int bitToSet = *Rn.ptr;
 
 						*Rd.ptr = *Rd.ptr | (1 << bitToSet);
@@ -2066,8 +2066,8 @@ int runNextInstruction(uint64_t* cycleCount){
 						return 1; // UNUSED IN THE ROM
 					}break;
 					case 0x2:{ // BCLR Rn, Rd
-						struct RegRef8 Rd = getRegRef8(bL);
-						struct RegRef8 Rn = getRegRef8(bH);
+						struct RegRef8 Rd = getRegRef8(bL);		
+						struct RegRef8 Rn = getRegRef8(bH);		
 						int bitToClear = *Rn.ptr;
 
 						*Rd.ptr = *Rd.ptr & ~(1 << bitToClear);
@@ -2086,7 +2086,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(newValue, 16);
 						*Rd.ptr = newValue;
 
-						printInstruction("%04x - OR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - OR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0x5:{ // XOR.w Rs, Rd
@@ -2096,7 +2096,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(newValue, 16);
 						*Rd.ptr = newValue;
 
-						printInstruction("%04x - XOR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - XOR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0x6:{ // AND.w Rs, Rd
@@ -2106,7 +2106,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						setFlagsMOV(newValue, 16);
 						*Rd.ptr = newValue;
 
-						printInstruction("%04x - AND.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - AND.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0x7:{ // BST / BIST #xx:3, Rd — Rd.bit = (~)C
@@ -2117,14 +2117,14 @@ int runNextInstruction(uint64_t* cycleCount){
 						struct RegRef8 Rd = getRegRef8(bL);
 						int b3 = bH & 0x7;
 						bool v = flags.C ? true : false;
-						if (bH & 0x8) v = !v; /* BIST: store ~C */
-						if (v) *Rd.ptr |= (uint8_t)(1 << b3);
-						else *Rd.ptr &= (uint8_t)~(1 << b3);
+						if (bH & 0x8) v = !v;        /* BIST: store ~C */
+						if (v) *Rd.ptr |=  (uint8_t)(1 << b3);
+						else   *Rd.ptr &= (uint8_t)~(1 << b3);
 						printInstruction("%04x - B%sST #%d, r%d%c\n", pc,
-						 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
+						                 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
-					case 0x8:{
+					case 0x8:{ 
 						if(!(b & 0x80)){ // MOV.B @ERs, Rd
 							struct RegRef32 Rs = getRegRef32(bH);
 							struct RegRef8 Rd = getRegRef8(bL);
@@ -2134,8 +2134,8 @@ int runNextInstruction(uint64_t* cycleCount){
 							setFlagsMOV(value, 8);
 							*Rd.ptr = value;
 
-							printInstruction("%04x - MOV.b @ER%d, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg);
-						} else{// MOV.B Rs, @ERd
+							printInstruction("%04x - MOV.b @ER%d, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
+						} else{// MOV.B Rs, @ERd 
 							struct RegRef8 Rs = getRegRef8(bL);
 							struct RegRef32 Rd = getRegRef32(bH);
 
@@ -2148,15 +2148,15 @@ int runNextInstruction(uint64_t* cycleCount){
 						}
 						printRegistersState();
 					}break;
-					case 0x9:{
+					case 0x9:{ 
 						if(!(b & 0x80)){ // MOV.w @ERs, Rd
 							struct RegRef32 Rs = getRegRef32(bH);
 							struct RegRef16 Rd = getRegRef16(bL);
 							uint16_t value = getMemory16(*Rs.ptr);
 							setFlagsMOV(value, 16);
 							*Rd.ptr = value;
-							printInstruction("%04x - MOV.w @ER%d, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx );
-						} else{ // MOV.w Rs, @ERd
+							printInstruction("%04x - MOV.w @ER%d, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx ); 
+						} else{ // MOV.w Rs, @ERd 
 							struct RegRef16 Rs = getRegRef16(bL);
 							struct RegRef32 Rd = getRegRef32(bH);
 							uint16_t value = *Rs.ptr;
@@ -2168,7 +2168,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						printRegistersState();
 
 					} break;
-					case 0xA:{
+					case 0xA:{ 
 						switch(bH){
 							case 0x0:{ // MOV.B @aa:16, Rd
 								uint32_t address = (cd & 0x0000FFFF) | 0x00FF0000; // Upper 16 bits assumed to be 1
@@ -2184,12 +2184,12 @@ int runNextInstruction(uint64_t* cycleCount){
 									*SSU.SSSR = clearBit8(*SSU.SSSR, 1);
 								}
 
-								printInstruction("%04x - MOV.b @%x:16, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - MOV.b @%x:16, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
 								printRegistersState();
 
 							}break;
 
-							case 0x8:{ // MOV.B Rs, @aa:16
+							case 0x8:{ // MOV.B Rs, @aa:16 
 								uint32_t address = (cd & 0x0000FFFF) | 0x00FF0000; // Upper 16 bits assumed to be 1
 
 								struct RegRef8 Rs = getRegRef8(bL);
@@ -2205,7 +2205,7 @@ int runNextInstruction(uint64_t* cycleCount){
 									TimerB.TLBvalue = value; // TODO (if handling custom ROMs) add these checks in the other MOVs
 								}
 
-								printInstruction("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address);
+								printInstruction("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
 								printMemory(address, 1);
 								printRegistersState();
 
@@ -2228,12 +2228,12 @@ int runNextInstruction(uint64_t* cycleCount){
 								setFlagsMOV(value, 16);
 								*Rd.ptr = value;
 
-								printInstruction("%04x - MOV.w @%x:16, %c%d\n", pc, address, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - MOV.w @%x:16, %c%d\n", pc, address, Rd.loOrHiReg, Rd.idx); 
 								printRegistersState();
 
 							}break;
 
-							case 0x8:{ // MOV.w Rs, @aa:16
+							case 0x8:{ // MOV.w Rs, @aa:16 
 								uint32_t address = (cd & 0x0000FFFF) | 0x00FF0000; // Upper 16 bits assumed to be 1
 
 								struct RegRef16 Rs = getRegRef16(bL);
@@ -2242,7 +2242,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setFlagsMOV(value, 16);
 								setMemory16(address, value);
 
-								printInstruction("%04x - MOV.w %c%d,@%x:16 \n", pc, Rs.loOrHiReg, Rs.idx, address);
+								printInstruction("%04x - MOV.w %c%d,@%x:16 \n", pc, Rs.loOrHiReg, Rs.idx, address); 
 								printMemory(address, 2);
 								printRegistersState();
 
@@ -2268,7 +2268,7 @@ int runNextInstruction(uint64_t* cycleCount){
 							setFlagsMOV(value, 8);
 							*Rd.ptr = value;
 
-							printInstruction("%04x - MOV.b @ER%d+, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg);
+							printInstruction("%04x - MOV.b @ER%d+, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
 
 						} else{
 							struct RegRef32 Rd = getRegRef32(bH);
@@ -2281,7 +2281,7 @@ int runNextInstruction(uint64_t* cycleCount){
 							setMemory8(*Rs.ptr, value);
 							setFlagsMOV(value, 8);
 
-							printInstruction("%04x - MOV.b R%d%c, @-ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+							printInstruction("%04x - MOV.b R%d%c, @-ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx); 
 							printMemory(*Rd.ptr, 1);
 
 						}
@@ -2304,7 +2304,7 @@ int runNextInstruction(uint64_t* cycleCount){
 							setFlagsMOV(value, 16);
 							*Rd.ptr = value;
 
-							printInstruction("%04x - MOV.w @ER%d+, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx);
+							printInstruction("%04x - MOV.w @ER%d+, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx); 
 
 						} else{
 							struct RegRef32 Rd = getRegRef32(bH);
@@ -2316,12 +2316,12 @@ int runNextInstruction(uint64_t* cycleCount){
 							setMemory16(*Rd.ptr, value);
 							setFlagsMOV(value, 16);
 
-							printInstruction("%04x - MOV.w %c%d, @-ER%d, \n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+							printInstruction("%04x - MOV.w %c%d, @-ER%d, \n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx); 
 							printMemory(*Rd.ptr, 2);
 						}
 						printRegistersState();
 					} break;
-					case 0xE:{
+					case 0xE:{ 
 						struct RegRef8 Rd = getRegRef8(bL);
 					struct RegRef32 Rs = getRegRef32(bH);
 
@@ -2334,19 +2334,19 @@ int runNextInstruction(uint64_t* cycleCount){
 							*Rd.ptr = value;
 							setFlagsMOV(value, 8);
 
-							printInstruction("%04x - MOV.b @(%d:16, ER%d), R%d%c\n", pc, disp, Rs.idx, Rd.idx, Rd.loOrHiReg);
+							printInstruction("%04x - MOV.b @(%d:16, ER%d), R%d%c\n", pc, disp, Rs.idx, Rd.idx, Rd.loOrHiReg); 
 
 						} else{ // To memory MOV.B Rs, @(d:16, ERd)
 							uint8_t value = *Rd.ptr;
 							setFlagsMOV(value, 8);
 							setMemory8(*Rs.ptr + signExtendedDisp, value);
-							printInstruction("%04x - MOV.b R%d%c, @(%d:16, ER%d), \n", pc, Rd.idx, Rd.loOrHiReg, disp, Rs.idx);
+							printInstruction("%04x - MOV.b R%d%c, @(%d:16, ER%d), \n", pc, Rd.idx, Rd.loOrHiReg, disp, Rs.idx); 
 							printMemory(*Rs.ptr + signExtendedDisp, 1);
 						}
 						printRegistersState();
 						pc+=2;
 					}break;
-					case 0xF:{
+					case 0xF:{ 
 						struct RegRef16 Rd = getRegRef16(bL);
 					struct RegRef32 Rs = getRegRef32(bH);
 						uint16_t disp = cd;
@@ -2358,13 +2358,13 @@ int runNextInstruction(uint64_t* cycleCount){
 							*Rd.ptr = value;
 							setFlagsMOV(value, 16);
 
-							printInstruction("%04x - MOV.w @(%d:16, ER%d), %c%d\n", pc, disp, Rs.idx, Rd.loOrHiReg, Rd.idx);
+							printInstruction("%04x - MOV.w @(%d:16, ER%d), %c%d\n", pc, disp, Rs.idx, Rd.loOrHiReg, Rd.idx); 
 
 						} else{ // To memory MOV.W Rs, @(d:16, ERd)
 							uint16_t value = *Rd.ptr;
 							setFlagsMOV(value, 16);
 							setMemory16(*Rs.ptr + signExtendedDisp, value);
-							printInstruction("%04x - MOV.w %c%d, @(%d:16, ER%d), \n", pc, Rd.loOrHiReg, Rd.idx, disp, Rs.idx);
+							printInstruction("%04x - MOV.w %c%d, @(%d:16, ER%d), \n", pc, Rd.loOrHiReg, Rd.idx, disp, Rs.idx); 
 							printMemory(*Rs.ptr + signExtendedDisp, 2);
 						}
 						printRegistersState();
@@ -2382,7 +2382,7 @@ int runNextInstruction(uint64_t* cycleCount){
 				switch(aL){
 					case 0x0:{ // BSET #xx:3, Rd
 
-						struct RegRef8 Rd = getRegRef8(bL);
+						struct RegRef8 Rd = getRegRef8(bL);		
 
 						int bitToSet = bH;
 
@@ -2391,7 +2391,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						printInstruction("%04x - BSET #%d, r%d%c\n", pc, bitToSet, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
-					case 0x1:{ // BNOT #xx:3, Rd (71 N0) — toggle bit n
+					case 0x1:{ // BNOT #xx:3, Rd  (71 N0) — toggle bit n
 						struct RegRef8 Rd = getRegRef8(bL);
 						int bitToInvert = bH;
 						*Rd.ptr = (uint8_t)(*Rd.ptr ^ (1 << bitToInvert));
@@ -2400,7 +2400,7 @@ int runNextInstruction(uint64_t* cycleCount){
 					}break;
 					case 0x2:{ // BCLR #xx:3, Rd
 
-						struct RegRef8 Rd = getRegRef8(bL);
+						struct RegRef8 Rd = getRegRef8(bL);		
 
 						int bitToClear = bH;
 
@@ -2426,7 +2426,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						if (bH & 0x8) bit = !bit;
 						flags.C = flags.C || bit;
 						printInstruction("%04x - B%sOR #%d, r%d%c\n", pc,
-						 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
+						                 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x5:{ // BXOR / BIXOR #xx:3, Rd — C ^= (~)bit
@@ -2436,7 +2436,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						if (bH & 0x8) bit = !bit;
 						flags.C = (flags.C ? true : false) != bit;
 						printInstruction("%04x - B%sXOR #%d, r%d%c\n", pc,
-						 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
+						                 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x6:{ // BAND / BIAND #xx:3, Rd — C &= (~)bit
@@ -2446,7 +2446,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						if (bH & 0x8) bit = !bit;
 						flags.C = flags.C && bit;
 						printInstruction("%04x - B%sAND #%d, r%d%c\n", pc,
-						 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
+						                 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x7:{ // BLD / BILD #xx:3, Rd — C = (~)bit
@@ -2456,7 +2456,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						if (bH & 0x8) bit = !bit;
 						flags.C = bit;
 						printInstruction("%04x - B%sLD #%d, r%d%c\n", pc,
-						 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
+						                 (bH & 0x8) ? "I" : "", b3, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x8:{
@@ -2465,46 +2465,46 @@ int runNextInstruction(uint64_t* cycleCount){
 					}break;
 					case 0x9:{ // XXX.w #xx:16, Rd
 					struct RegRef16 Rd = getRegRef16(bL);
-						switch(bH){
+						switch(bH){ 
 							case 0x0:{ // MOV.w #xx:16, Rd
 								setFlagsMOV(cd, 16);
 								*Rd.ptr = cd;
-								printInstruction("%04x - MOV.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - MOV.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x1:{ // ADD.w #xx:16, Rd
 								setFlagsADD(*Rd.ptr, cd, 16);
 								*Rd.ptr += cd;
-								printInstruction("%04x - ADD.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - ADD.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x2:{ // CMP.w #xx:16, Rd
 								setFlagsSUB(*Rd.ptr, cd, 16);
-								printInstruction("%04x - CMP.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - CMP.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x3:{ // SUB.w #xx:16, Rd
 								setFlagsSUB(*Rd.ptr, cd, 16);
 								*Rd.ptr -= cd;
-								printInstruction("%04x - SUB.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - SUB.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x4:{ // OR.w #xx:16, Rd
 								uint16_t value = cd;
 								uint16_t newValue = cd | *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-								printInstruction("%04x - OR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - OR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x5:{ // XOR.w #xx:16, Rd
 								uint16_t value = cd;
 								uint16_t newValue = cd ^ *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-								printInstruction("%04x - XOR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - XOR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x6:{ // AND.w #xx:16, Rd
 								uint16_t value = cd;
 								uint16_t newValue = cd & *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-								printInstruction("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							default:{
 								return 1;
@@ -2515,44 +2515,44 @@ int runNextInstruction(uint64_t* cycleCount){
 					}break;
 					case 0xA:{ // XXX.l #xx:32, ERd
 					struct RegRef32 Rd = getRegRef32(bL);
-						switch(bH){
+						switch(bH){ 
 							case 0x0:{ // MOV.l #xx:32, ERd
 								setFlagsMOV(cdef, 32);
 								*Rd.ptr = cdef;
-								printInstruction("%04x - MOV.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - MOV.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x1:{ // ADD.l #xx:32, ERd
 								setFlagsADD(*Rd.ptr, cdef, 32);
 								*Rd.ptr += cdef;
-								printInstruction("%04x - ADD.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - ADD.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x2:{
 								// CMP.l #xx:32, ERd
 								setFlagsSUB(*Rd.ptr, cdef, 32);
-								printInstruction("%04x - CMP.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - CMP.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x3:{ // SUB.l #xx:32, ERd
 								setFlagsSUB(*Rd.ptr, cdef, 32);
 								*Rd.ptr -= cdef;
-								printInstruction("%04x - SUB.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - SUB.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x4:{ // OR.l #xx:32, ERd
 								uint32_t newValue = cdef | *Rd.ptr;
 								setFlagsMOV(newValue, 32);
 								*Rd.ptr = newValue;
-								printInstruction("%04x - OR.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - OR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x5:{ // XOR.l #xx:32, ERd
 								uint32_t newValue = cdef ^ *Rd.ptr;
 								setFlagsMOV(newValue, 32);
 								*Rd.ptr = newValue;
-								printInstruction("%04x - XOR.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - XOR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x6:{ // AND.l #xx:32, ERd
 								uint32_t newValue = cdef & *Rd.ptr;
 								setFlagsMOV(newValue, 32);
 								*Rd.ptr = newValue;
-								printInstruction("%04x - AND.l 0x%04x, ER%d\n", pc, cdef, Rd.idx);
+								printInstruction("%04x - AND.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							default:{
 								return 1;
@@ -2570,7 +2570,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						switch(c){
 							case 0x77:{
 								// BLD #xx:3, @ERd
-								struct RegRef32 Rd = getRegRef32(bH);
+								struct RegRef32 Rd = getRegRef32(bH);		
 								int bitToLoad = dH;
 								printInstruction("%04x - BLD #%d, @ER%d\n", pc, bitToLoad, Rd.idx);
 								flags.C = getMemory8(*Rd.ptr) & (1 << bitToLoad);
@@ -2636,7 +2636,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										int bitToLoad = dH;
 										uint32_t address = (0x0000FF00) | b;
 										printInstruction("%04x - BLD #%d, @0x%x:8\n", pc, bitToLoad, address);
-										flags.C = getMemory8(address) & (1 << bitToLoad);
+										flags.C =  getMemory8(address) & (1 << bitToLoad);
 									}
 								}break;
 								default:{
@@ -2646,10 +2646,10 @@ int runNextInstruction(uint64_t* cycleCount){
 
 
 						}
-						pc+=2;
+						pc+=2; 
 					}break;
 					case 0xD:{
-					struct RegRef32 Rd = getRegRef32(bH);
+					struct RegRef32 Rd = getRegRef32(bH);		
 						switch(c){
 							case 0x70:{ // BSET #xx:3, @ERd
 								int bitToSet = dH;
@@ -2657,7 +2657,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
 							}break;
 							case 0x60:{ // BSET Rn, @ERd
-								struct RegRef8 Rn = getRegRef8(dH);
+								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToSet = *Rn.ptr;
 								printInstruction("%04x - BSET r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
@@ -2673,7 +2673,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
 							}break;
 							case 0x62:{ // BCLR Rn, @ERd
-								struct RegRef8 Rn = getRegRef8(dH);
+								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToClear = *Rn.ptr;
 								printInstruction("%04x - BCLR r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
@@ -2704,7 +2704,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setMemory8(address, getMemory8(address) | (1 << bitToSet));
 							}break;
 							case 0x60:{ // BSET Rn, @aa:8
-								struct RegRef8 Rn = getRegRef8(dH);
+								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToSet = *Rn.ptr;
 								printInstruction("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
 								setMemory8(address, getMemory8(address) | (1 << bitToSet));
@@ -2715,7 +2715,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
 							}break;
 							case 0x62:{ // BCLR Rn, @aa:8
-								struct RegRef8 Rn = getRegRef8(dH);
+								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToClear = *Rn.ptr;
 								printInstruction("%04x - BCLR r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
 								setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
@@ -2759,7 +2759,7 @@ int runNextInstruction(uint64_t* cycleCount){
 
 				setFlagsSUB(*Rd.ptr, value, 8);
 
-				printInstruction("%04x - CMP.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg);
+				printInstruction("%04x - CMP.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 
 			}break;
@@ -2777,7 +2777,7 @@ int runNextInstruction(uint64_t* cycleCount){
 				setFlagsMOV(newValue, 8);
 				*Rd.ptr = newValue;
 
-				printInstruction("%04x - OR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg);
+				printInstruction("%04x - OR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
@@ -2789,7 +2789,7 @@ int runNextInstruction(uint64_t* cycleCount){
 				setFlagsMOV(newValue, 8);
 				*Rd.ptr = newValue;
 
-				printInstruction("%04x - XOR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg);
+				printInstruction("%04x - XOR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
@@ -2801,7 +2801,7 @@ int runNextInstruction(uint64_t* cycleCount){
 				setFlagsMOV(newValue, 8);
 				*Rd.ptr = newValue;
 
-				printInstruction("%04x - AND.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg);
+				printInstruction("%04x - AND.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
@@ -2813,7 +2813,7 @@ int runNextInstruction(uint64_t* cycleCount){
 				setFlagsMOV(value, 8);
 				*Rd.ptr = value;
 
-				printInstruction("%04x - MOV.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg);
+				printInstruction("%04x - MOV.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
@@ -2824,7 +2824,7 @@ int runNextInstruction(uint64_t* cycleCount){
 		}
 
 		// SSU cleanup
-		if((getMemory8(PORT9)) & ACCEL_PIN){
+		if((getMemory8(PORT9)) & ACCEL_PIN){ 
 			accel.buffer.state = ACCEL_GETTING_ADDRESS;
 			accel.buffer.offset = 0x0;
 		}
@@ -2888,7 +2888,7 @@ int runNextInstruction(uint64_t* cycleCount){
 			}
 
 			if ((*SSU.SSER & (TE | RE)) == (TE | RE)){ // Transmission and recieve enabled
-				if(~*SSU.SSSR & TDRE){
+				if(~*SSU.SSSR & TDRE){ 
 					// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 					// Accelerometer
 					// TODO: check all the RDRF | TDRE stuff once we begin sampling the accel, it's proablby wrong the way its coded now
@@ -2898,19 +2898,19 @@ int runNextInstruction(uint64_t* cycleCount){
 								accel.buffer.address = *SSU.SSTDR & 0x7F; // Remove bit 7 (R/W flag), keep 7-bit register address
 								accel.buffer.offset = 0;
 								accel.buffer.state = ACCEL_GETTING_BYTES;
-								*SSU.SSSR = *SSU.SSSR | RDRF;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
 							}break;
 							case ACCEL_GETTING_BYTES:{
-								*SSU.SSRDR = accel.memory[(accel.buffer.address) + accel.buffer.offset];
+								*SSU.SSRDR = accel.memory[(accel.buffer.address) + accel.buffer.offset]; 
 								accel.buffer.offset += 1;
-								*SSU.SSSR = *SSU.SSSR | RDRF;
-								*SSU.SSSR = *SSU.SSSR | TDRE;
-								*SSU.SSSR = *SSU.SSSR | TEND;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
+								*SSU.SSSR = *SSU.SSSR | TDRE; 
+								*SSU.SSSR = *SSU.SSSR | TEND; 
 							}break;
 						}
 					}
 					// EEPROM
-					else if(~(getMemory8(PORT1)) & EEPROM_PIN){
+					else if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
 						bool ssuOpFinished = false;
 						SSU.progress += 1;
 						if (SSU.progress == 7){
@@ -2928,9 +2928,9 @@ int runNextInstruction(uint64_t* cycleCount){
 										case 0x5:{ // RDSR - read status register
 											eeprom.buffer.state = EEPROM_GETTING_STATUS_REGISTER;
 										} break;
-										case 0x6:{ // WREN - write enable. the custom ROM drives EEP writes
-										 // full-duplex (SSER=0xC0), so WREN/WRITE land
-										 // on this read path; honour them here too.
+										case 0x6:{ // WREN - write enable. v2 drives EEP writes
+										            // full-duplex (SSER=0xC0), so WREN/WRITE land
+										            // on this read path; honour them here too.
 											eeprom.status |= 0x2; // WEL
 											*SSU.SSSR = *SSU.SSSR | TEND;
 										} break;
@@ -2941,7 +2941,7 @@ int runNextInstruction(uint64_t* cycleCount){
 									}
 								} break;
 								case EEPROM_GETTING_STATUS_REGISTER:{
-									*SSU.SSRDR = eeprom.status;
+									*SSU.SSRDR = eeprom.status; 
 									*SSU.SSSR = *SSU.SSSR | TEND;
 								} break;
 								case EEPROM_GETTING_ADDRESS_HI:{
@@ -2963,7 +2963,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										eeprom.buffer.offset = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
 									} else {
 										*SSU.SSRDR = eeprom.memory[(((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset) & 0xFFFF];
-										eeprom.buffer.offset = (eeprom.buffer.offset + 1);
+										eeprom.buffer.offset  = (eeprom.buffer.offset + 1);
 									}
 									*SSU.SSSR = *SSU.SSSR | TEND;
 
@@ -2975,26 +2975,26 @@ int runNextInstruction(uint64_t* cycleCount){
 				}
 			}
 			}
-			else if (*SSU.SSER & TE){
-				if(~*SSU.SSSR & TDRE){
+			else if (*SSU.SSER & TE){ 
+				if(~*SSU.SSSR & TDRE){ 
 					// Accelerometer
-					if(~(getMemory8(PORT9)) & ACCEL_PIN){
+					if(~(getMemory8(PORT9)) & ACCEL_PIN){ 
 						switch(accel.buffer.state){
 							case ACCEL_GETTING_ADDRESS:{
 								accel.buffer.address = *SSU.SSTDR;
 								accel.buffer.state = ACCEL_GETTING_BYTES;
-								*SSU.SSSR = *SSU.SSSR | RDRF;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
 							}break;
 							case ACCEL_GETTING_BYTES:{
 								accel.memory[accel.buffer.address] = *SSU.SSTDR;
-								*SSU.SSSR = *SSU.SSSR | RDRF;
-								*SSU.SSSR = *SSU.SSSR | TDRE;
-								*SSU.SSSR = *SSU.SSSR | TEND;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
+								*SSU.SSSR = *SSU.SSSR | TDRE; 
+								*SSU.SSSR = *SSU.SSSR | TEND; 
 							}break;
 						}
 					}
 					// EEPROM
-					if(~(getMemory8(PORT1)) & EEPROM_PIN){
+					if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
 						bool ssuOpFinished = false;
 						SSU.progress += 1;
 						if (SSU.progress == 7){
@@ -3035,12 +3035,12 @@ int runNextInstruction(uint64_t* cycleCount){
 									return 1; // Invalid state
 								}
 							}
-							*SSU.SSSR = *SSU.SSSR | TDRE;
+							*SSU.SSSR = *SSU.SSSR | TDRE; 
 						}
 					}
 
 					// LCD
-					if((getMemory8(PORT1)) & LCD_DATA_PIN){
+					if((getMemory8(PORT1)) & LCD_DATA_PIN){ 
 						bool ssuOpFinished = false;
 						SSU.progress += 1;
 						if (SSU.progress == 7){
@@ -3056,10 +3056,10 @@ int runNextInstruction(uint64_t* cycleCount){
 							 * edge x>=80 — i.e. the footer-right fragment that no
 							 * lcd_draw_image covers. Names the writer instruction. */
 							if (drawTraceEnabled && *SSU.SSTDR != 0 &&
-							 (lcd.currentPage==6||lcd.currentPage==7||lcd.currentPage==14||lcd.currentPage==15) &&
-							 lcd.currentColumn>=80) {
+							    (lcd.currentPage==6||lcd.currentPage==7||lcd.currentPage==14||lcd.currentPage==15) &&
+							    lcd.currentColumn>=80) {
 								fprintf(stderr,
-									"[SSU] page=%u col=%u byte=%u val=%02X writer=0x%04X\n",
+									"[SSU] page=%u col=%u byte=%u val=%02X  writer=0x%04X\n",
 									lcd.currentPage, lcd.currentColumn, lcd.currentByte,
 									*SSU.SSTDR, lcdSstdrWriterPC);
 							}
@@ -3068,7 +3068,7 @@ int runNextInstruction(uint64_t* cycleCount){
 							lcd.currentColumn = (lcd.currentColumn + 1);
 							}
 							lcd.currentByte = (lcd.currentByte + 1) % 2;
-							*SSU.SSSR = *SSU.SSSR | TDRE;
+							*SSU.SSSR = *SSU.SSSR | TDRE; 
 							*SSU.SSSR = *SSU.SSSR | TEND;
 						}
 					}
@@ -3157,7 +3157,7 @@ int runNextInstruction(uint64_t* cycleCount){
 								 * page-flips for double-buffering ever does this
 								 * (the Nintendo ROM alternates 0/64 every frame).
 								 * A ROM that only sets line 0 (or an init value
-								 * <64) while drawing into the upper half — the custom ROM
+								 * <64) while drawing into the upper half — v2
 								 * today, double-buffer not yet wired — never
 								 * does, so it keeps the pick-inkier fallback. */
 								if (lcd.displayStartLine >= LCD_HEIGHT)
@@ -3169,12 +3169,12 @@ int runNextInstruction(uint64_t* cycleCount){
 							}break;
 
 						}
-					*SSU.SSSR = *SSU.SSSR | TDRE;
+					*SSU.SSSR = *SSU.SSSR | TDRE; 
 					*SSU.SSSR = *SSU.SSSR | TEND;
 					}
 				}
 			}
-			else if (*SSU.SSER & RE){
+			else if (*SSU.SSER & RE){ 
 				return 1; // TODO: Check if this mode is used in the ROM
 			}
 		}
@@ -3232,13 +3232,19 @@ int runNextInstruction(uint64_t* cycleCount){
 		// Poll interval must be long enough that the I2C overhead of reading
 		// RXLVL (~100-160 µs per transaction) doesn't dominate the frame.
 		// At 115200 baud ~11.5 bytes/ms arrive; the SC16IS750 FIFO holds 64
-		// bytes (~5.5 ms). 4096 H8 cycles ≈ 1.1 ms → ~13 bytes between
-		// polls, well within the FIFO. (512 was too frequent — 1800 I2C
+		// bytes (~5.5 ms).  4096 H8 cycles ≈ 1.1 ms → ~13 bytes between
+		// polls, well within the FIFO.  (512 was too frequent — 1800 I2C
 		// reads per frame consumed ~270 ms, exceeding the 250 ms budget.)
 #ifdef __3DS__
 		{
 			static uint32_t irPollCountdown = 4096;
+			static uint8_t  irBurst[256];   /* reensamblado del paquete IR */
+			static size_t   irBurstLen = 0;
 			if (--irPollCountdown == 0) {
+				/* Drenar el eco AUNQUE estemos transmitiendo: el FIFO son
+				 * 64 B y un chunk genera 136 B de eco -> desbordaria y se
+				 * perderian tambien los bytes que el peer manda despues. */
+				ir_drain_tx_echo();
 				irPollCountdown = 4096;
 				// Eagerly drain the peer socket into the scheduled chunk
 				// queue EVERY poll tick — even while rxBuf is busy AND even
@@ -3258,14 +3264,56 @@ int runNextInstruction(uint64_t* cycleCount){
 					// skipped — a stale unread byte just postpones the
 					// burst a few polls instead of silently stranding it
 					// in rxBuf forever (the #26 black hole).
-					if (SCI3.rxPos >= SCI3.rxLen &&
-					 !(*SCI3.SSR3 & SCI3_RDRF) && SCI3.rxCountdown == 0) {
-						size_t n = ir_recv_poll(SCI3.rxBuf, sizeof(SCI3.rxBuf));
+					/* PRESERVAR LAS FRONTERAS DE PAQUETE (ver bench/README).
+					 * El firmware delimita paquetes por silencios de solo 4
+					 * ticks (~122 us) del contador libre, pero este poll va
+					 * cada 4096 ciclos (~1.1 ms) y solo ve "lo que hay en el
+					 * FIFO". Entregar eso tal cual PARTE cualquier paquete que
+					 * abarque mas de un poll (136 B tardan 11.8 ms en el aire,
+					 * ~11 polls) -> gap falso intra-paquete -> CRC malo ->
+					 * tormenta de bad-CRC -> teardown. Era la causa del muro
+					 * del pairing.
+					 * Solucion: acumular los bytes de polls CONSECUTIVOS y
+					 * entregar el burst COMPLETO y CONTIGUO cuando un poll
+					 * vuelve VACIO (= silencio real en el aire = fin de
+					 * paquete). Coste: ~1.1 ms (un poll) de latencia, frente a
+					 * los ~98 ms de ventana de respuesta del walker. */
+					{
+						uint8_t tmp[256];
+						size_t n = ir_recv_poll(tmp, sizeof(tmp));
 						if (n > 0) {
-							SCI3.rxLen = n;
+							/* mismo burst: sigue llegando sin silencio */
+							if (irBurstLen + n > sizeof(irBurst))
+								irBurstLen = 0;          /* desbordado: descartar */
+							memcpy(irBurst + irBurstLen, tmp, n);
+							irBurstLen += n;
+							/* Valvula: un paquete legal nunca pasa de 8+128.
+							 * Si acumulamos mas es que el FIFO traia un BACKLOG
+							 * de varios paquetes (no un paquete partido) ->
+							 * entregar ya, para no fusionarlos. */
+							if (irBurstLen >= 136u &&
+							    SCI3.rxPos >= SCI3.rxLen &&
+							    !(*SCI3.SSR3 & SCI3_RDRF) &&
+							    SCI3.rxCountdown == 0) {
+								size_t m = irBurstLen <= sizeof(SCI3.rxBuf)
+								           ? irBurstLen : sizeof(SCI3.rxBuf);
+								memcpy(SCI3.rxBuf, irBurst, m);
+								SCI3.rxLen = m; SCI3.rxPos = 0; irBurstLen = 0;
+								SCI3.rxCountdown = 320;
+							}
+						} else if (irBurstLen > 0 && ir_rx_air_silent() &&
+						           SCI3.rxPos >= SCI3.rxLen &&
+						           !(*SCI3.SSR3 & SCI3_RDRF) &&
+						           SCI3.rxCountdown == 0) {
+							/* poll vacio + RX libre -> entregar el paquete entero */
+							size_t m = irBurstLen <= sizeof(SCI3.rxBuf)
+							           ? irBurstLen : sizeof(SCI3.rxBuf);
+							memcpy(SCI3.rxBuf, irBurst, m);
+							SCI3.rxLen = m;
 							SCI3.rxPos = 0;
-							irTracePush(IR_TRACE_RX_POLL, (uint8_t)n, 0, 0);
-							SCI3.rxCountdown = 320; // first byte after one baud period
+							irBurstLen = 0;
+							irTracePush(IR_TRACE_RX_POLL, (uint8_t)m, 0, 0);
+							SCI3.rxCountdown = 320;
 						}
 					}
 				}
@@ -3289,10 +3337,10 @@ void initWalker(){
 
 	sleep = false;
 	uint64_t subClockCyclesEllapsed = 0;
-
+	
 	memory = malloc(MEM_SIZE);
 	memset(memory, 0, MEM_SIZE);
-
+	
 	memset(&eeprom, 0, sizeof(eeprom));
 	eeprom.memory = malloc(EEPROM_SIZE);
 	memset(eeprom.memory, 0xFF, EEPROM_SIZE);
@@ -3304,7 +3352,7 @@ void initWalker(){
 #endif
 
 	memset(&accel, 0, sizeof(accel));
-	accel.memory = malloc(64); /* BMA150 has registers up to 0x3F */
+	accel.memory = malloc(64);  /* BMA150 has registers up to 0x3F */
 	memset(accel.memory, 0, 64);
 	accel.memory[0] = 0x2; // Chip id
 
@@ -3340,18 +3388,18 @@ void initWalker(){
 	entry = (memory[0] << 8) | memory[1];
 
 	// Init SSU registers
-	SSU.SSCRH = &memory[0xF0E0];
-	SSU.SSCRL = &memory[0xF0E1];
-	SSU.SSMR = &memory[0xF0E2];
-	SSU.SSER = &memory[0xF0E3];
-	SSU.SSSR = &memory[0xF0E4];
-	SSU.SSRDR = &memory[0xF0E9];
-	SSU.SSTDR = &memory[0xF0EB];
-	SSU.SSTRSR = 0x0;
+	SSU.SSCRH = &memory[0xF0E0]; 
+	SSU.SSCRL = &memory[0xF0E1]; 
+	SSU.SSMR = &memory[0xF0E2]; 
+	SSU.SSER = &memory[0xF0E3]; 
+	SSU.SSSR = &memory[0xF0E4]; 
+	SSU.SSRDR = &memory[0xF0E9]; 
+	SSU.SSTDR = &memory[0xF0EB]; 
+	SSU.SSTRSR = 0x0; 
 
-	*SSU.SSRDR = 0x0;
+	*SSU.SSRDR = 0x0; 
 	*SSU.SSTDR = 0x0;
-	*SSU.SSER = 0x0;
+	*SSU.SSER = 0x0; 
 	*SSU.SSSR = 0x4; // TDRE = 1 (Transmit data empty)
 
 	// Init SCI3 registers (IrDA serial)
@@ -3397,13 +3445,13 @@ void initWalker(){
 	// Init Timers
 	TimerB.on = false;
 	TimerB.TMB1 = &memory[0xF0D0];
-	setMemory8(0xf0d0, 0b00111000);
+	setMemory8(0xf0d0, 0b00111000); 
 	TimerB.TCB1 = &memory[0xF0D1];
-	setMemory8(0xf0d1, 0);
+	setMemory8(0xf0d1, 0); 
 	TimerB.TLBvalue = 0;
 	memset(&TimerW, 0, sizeof(TimerW));
 	TimerW.TMRW = &memory[0xf0f0];
-	setMemory8(0xf0f0, 0b01001000);
+	setMemory8(0xf0f0, 0b01001000); 
 	TimerW.TCRW = &memory[0xf0f1];
 	setMemory8(0xf0f1, 0);
 	TimerW.TIERW = &memory[0xf0f2];
@@ -3428,9 +3476,9 @@ void initWalker(){
 	*/ // Unused in the ROM
 
 	// Init Clock halt registers
-	CKSTPR1 = &memory[0xfffa];
-	setMemory8(0xFFFA, 0b00000011);
-	CKSTPR2 = &memory[0xfffb];
+	CKSTPR1 = &memory[0xfffa];	
+	setMemory8(0xFFFA, 0b00000011); 
+	CKSTPR2 = &memory[0xfffb];	
 	setMemory8(0xFFFB, 0b00000100);
 
 	// Init Interrupt stuff
@@ -3475,26 +3523,26 @@ void injectSteps(uint32_t steps){
 	if (steps == 0) return;
 
 	/* RAM addresses from pokewalker-rom-dumper/pw/inc/ramvars.asm.h:
-	 * 0xF780: RamCache_totalSteps (u32 BE, max 9999999)
-	 * 0xF784: RamCache_STEP_COUNT (u32 BE, identity step count)
-	 * 0xF78E: RamCache_curWatts (u16 BE, max 9999)
-	 * 0xF792: stepToWattDividerState (u8, counts 0-19, resets at 20 → +1 watt)
-	 * 0xF79C: stepCountTodaySoFar (u32 BE, max 99999)
+	 *   0xF780: RamCache_totalSteps       (u32 BE, max 9999999)
+	 *   0xF784: RamCache_STEP_COUNT       (u32 BE, identity step count)
+	 *   0xF78E: RamCache_curWatts         (u16 BE, max 9999)
+	 *   0xF792: stepToWattDividerState    (u8, counts 0-19, resets at 20 → +1 watt)
+	 *   0xF79C: stepCountTodaySoFar       (u32 BE, max 99999)
 	 *
 	 * Watts conversion: every 20 steps = 1 watt (ROM function at 0x1F3E).
 	 */
 
 	/* Read current values */
-	uint32_t lifetime = (uint32_t)getMemory16(0xF780) << 16 | getMemory16(0xF782);
+	uint32_t lifetime  = (uint32_t)getMemory16(0xF780) << 16 | getMemory16(0xF782);
 	uint32_t stepCount = (uint32_t)getMemory16(0xF784) << 16 | getMemory16(0xF786);
-	uint16_t watts = getMemory16(0xF78E);
-	uint8_t divider = (uint8_t)getMemory8(0xF792);
-	uint32_t today = (uint32_t)getMemory16(0xF79C) << 16 | getMemory16(0xF79E);
+	uint16_t watts     = getMemory16(0xF78E);
+	uint8_t  divider   = (uint8_t)getMemory8(0xF792);
+	uint32_t today     = (uint32_t)getMemory16(0xF79C) << 16 | getMemory16(0xF79E);
 
 	/* Add steps */
-	lifetime += steps;
+	lifetime  += steps;
 	stepCount += steps;
-	today += steps;
+	today     += steps;
 
 	/* Cap at ROM maximums */
 	if (lifetime > 9999999) lifetime = 9999999;
@@ -3582,15 +3630,15 @@ bool consumeAudioEvent(uint16_t *graOut){
 int saveEeprom(void){
 	/* Sync RAM step/watts counters to EEPROM before saving.
 	 * HealthData: 0x18 bytes at EEPROM 0x0156 (A) / 0x0256 (B).
-	 * Checksum at offset +0x18 = 1 + sum(data[0..0x17]). */
+	 * Checksum at offset +0x18 = 1 + sum(data[0..0x17]).       */
 	static const uint16_t healthBase[2] = { 0x0156, 0x0256 };
 	for (int copy = 0; copy < 2; copy++) {
 		uint16_t b = healthBase[copy];
 		/* lifetimeTotalSteps: +0x00 (4B) from RAM 0xF780 */
-		for (int i = 0; i < 4; i++) eeprom.memory[b + i] = memory[0xF780 + i];
-		/* stepCount: +0x04 (4B) from RAM 0xF784 */
-		for (int i = 0; i < 4; i++) eeprom.memory[b + 4 + i] = memory[0xF784 + i];
-		/* curWatts: +0x0E (2B) from RAM 0xF78E */
+		for (int i = 0; i < 4; i++) eeprom.memory[b + i]      = memory[0xF780 + i];
+		/* stepCount:          +0x04 (4B) from RAM 0xF784 */
+		for (int i = 0; i < 4; i++) eeprom.memory[b + 4 + i]  = memory[0xF784 + i];
+		/* curWatts:            +0x0E (2B) from RAM 0xF78E */
 		for (int i = 0; i < 2; i++) eeprom.memory[b + 0xE + i] = memory[0xF78E + i];
 		/* Checksum = 1 + sum of 0x18 data bytes */
 		uint8_t cksum = 1;

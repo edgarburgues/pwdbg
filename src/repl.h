@@ -4,14 +4,15 @@
 #include <stdint.h>
 
 typedef struct ReplOpts {
- const char *rom_dir; /* default ./roms */
- const char *workdir; /* NULL = tempdir */
- const char *events_spec; /* NULL = off ("-" stdout / "stderr" / path) */
- const char *script; /* NULL = interactive; else run commands from file */
- const char *ir_listen; /* Unix socket path to listen on (peer server) */
- const char *ir_connect; /* Unix socket path to connect to (peer client) */
- int instance; /* JSON "i" label (0=single, 1/2 for duo peers) */
- bool ir_sniff; /* start with IR event emission on */
+    const char *rom_dir;        /* default /workspace/05-roms/pokewalker */
+    const char *workdir;        /* NULL = tempdir */
+    const char *events_spec;    /* NULL = off ("-" stdout / "stderr" / path) */
+    const char *script;         /* NULL = interactive; else run commands from file */
+    const char *ir_listen;      /* Unix socket path to listen on (peer server) */
+    const char *ir_connect;     /* Unix socket path to connect to (peer client) */
+    int         instance;       /* JSON "i" label (0=single, 1/2 for duo peers) */
+    bool        ir_sniff;   /* start with IR event emission on */
+    bool        realtime;   /* pace the CPU to 3.6864 MHz for external peers */
 } ReplOpts;
 
 int repl_main(const ReplOpts *opts);

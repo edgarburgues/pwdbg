@@ -26,7 +26,7 @@ LDLIBS ?= -lm
 
 PWDBG_SRCS = src/pwdbg.c src/run.c src/repl.c src/duo.c src/events.c \
  src/ir_stubs.c src/ir_bridge.c \
- src/common.c src/lcd.c src/walker_ext.c
+ src/common.c src/lcd.c src/walker_ext.c src/cov.c
 PWDBG_OBJS = $(patsubst src/%.c,$(BUILD)/%.o,$(PWDBG_SRCS))
 
 # walker.c is unity-included by walker_ext.c — do NOT compile it
